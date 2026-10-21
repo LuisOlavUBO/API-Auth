@@ -58,4 +58,17 @@ class OAuthScope extends Model
     {
         return static::grantedToClient($clientId)->pluck('name')->all();
     }
+
+    /**
+     * Names of the scopes granted to an OAuth client through its roles that belong to one API.
+     *
+     * @return string[]
+     */
+    public static function namesForClientInApi(string $clientId, string $apiName): array
+    {
+        return static::grantedToClient($clientId)
+            ->whereHas('api', fn (Builder $api) => $api->where('name', $apiName))
+            ->pluck('name')
+            ->all();
+    }
 }

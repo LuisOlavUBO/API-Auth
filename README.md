@@ -85,6 +85,12 @@ curl http://localhost:8000/api/v1/auth/me -H "Accept: application/json" -H "Auth
    curl -X POST http://localhost:8000/oauth/token -d "grant_type=client_credentials&client_id=<id>&client_secret=<secret>&scope=introspect"
    ```
 
+   Para llamar a otra API, lo recomendado es pedir un token **por API** con el parámetro `api` (ver [Tokens por API](#tokens-por-api)):
+
+   ```bash
+   curl -X POST http://localhost:8000/oauth/token -d "grant_type=client_credentials&client_id=<id>&client_secret=<secret>&api=api-maestros"
+   ```
+
 3. Para validar el token de un usuario que le llega, tiene dos opciones:
    - **Introspección** (detecta revocaciones/logout): `POST /api/v1/auth/introspect` con `token=<token del usuario>` y su propio token de cliente como Bearer.
    - **Verificación local** (sin llamada de red, no detecta revocación hasta que expira): verificar la firma RS256 del JWT con la clave de `/api/v1/auth/public-key` y revisar `exp`.
@@ -113,6 +119,17 @@ Al hacer login, [app/Services/ScopeRepository.php](app/Services/ScopeRepository.
 - Un usuario sin rol obtiene un token sin scopes.
 
 Los tokens de cliente (`client_credentials`) siguen las mismas reglas con la unión de los scopes de todos los roles del cliente. **Un cliente sin roles no puede pedir ningún scope.**
+
+### Tokens por API
+
+Un cliente `client_credentials` puede mandar `api=<nombre de la API>` para obtener un token que solo sirve en esa API:
+
+- Sin `scope`: el token trae **todos** los scopes que los roles del cliente le dan en esa API. El sistema no necesita conocer los scopes.
+- Con `scope`: el token trae solo esos, y todos deben pertenecer a esa API y estar en los roles del cliente; si no, `400 invalid_scope`.
+- Si la API no existe: `400 invalid_request` (`Unknown API [...]`).
+- Si el cliente no tiene scopes en esa API: `400 invalid_scope` (`The client has no scopes in API [...]`), en vez de emitir un token vacío.
+
+Así, un token filtrado solo sirve en la API que lo recibió. UBO.Common pide los tokens de esta forma y guarda uno en caché por API.
 
 ### Registrar un sistema que consume varias APIs
 

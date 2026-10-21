@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Api;
 use App\Models\OAuthScope;
 use App\Models\User;
 use Illuminate\Support\Collection;
@@ -34,6 +35,9 @@ class ScopeRepository extends PassportScopeRepository
      * no longer has are dropped instead of failing the refresh. Clients
      * without roles get no scopes.
      *
+     * A client credentials request with an "api" parameter gets a token for
+     * that API only (see scopesForApi).
+     *
      * @param  ScopeEntityInterface[]  $scopes
      * @return ScopeEntityInterface[]
      *
@@ -46,6 +50,12 @@ class ScopeRepository extends PassportScopeRepository
         ?string $userIdentifier = null,
         ?string $authCodeId = null
     ): array {
+        $apiName = request()->input('api');
+
+        if ($grantType === 'client_credentials' && is_string($apiName) && $apiName !== '') {
+            return $this->scopesForApi($scopes, $clientEntity->getIdentifier(), $apiName);
+        }
+
         $allowed = $userIdentifier === null
             ? OAuthScope::namesForClient($clientEntity->getIdentifier())
             : User::find($userIdentifier)?->allowedScopeNames() ?? [];
@@ -60,6 +70,42 @@ class ScopeRepository extends PassportScopeRepository
             ->filter(fn (ScopeEntityInterface $scope): bool => in_array($scope->getIdentifier(), $allowed, true))
             ->values()
             ->all();
+    }
+
+    /**
+     * Token for one API: without "scope" it carries every scope the client's
+     * roles grant in that API; with "scope" it carries the requested ones,
+     * which must all be granted in that API. Unknown APIs and APIs where the
+     * client has no scopes are rejected instead of issuing an empty token.
+     *
+     * @param  ScopeEntityInterface[]  $scopes
+     * @return ScopeEntityInterface[]
+     *
+     * @throws OAuthServerException
+     */
+    protected function scopesForApi(array $scopes, string $clientId, string $apiName): array
+    {
+        if (! Api::where('name', $apiName)->exists()) {
+            throw new OAuthServerException("Unknown API [{$apiName}].", 3, 'invalid_request');
+        }
+
+        $allowed = OAuthScope::namesForClientInApi($clientId, $apiName);
+
+        if (request()->filled('scope')) {
+            foreach ($scopes as $scope) {
+                if (! in_array($scope->getIdentifier(), $allowed, true)) {
+                    throw OAuthServerException::invalidScope($scope->getIdentifier());
+                }
+            }
+
+            return array_values($scopes);
+        }
+
+        if ($allowed === []) {
+            throw new OAuthServerException("The client has no scopes in API [{$apiName}].", 5, 'invalid_scope');
+        }
+
+        return array_map(fn (string $name): ScopeEntityInterface => new Scope($name), $allowed);
     }
 
     /**
