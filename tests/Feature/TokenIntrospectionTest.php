@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Api;
+use App\Models\OAuthScope;
 use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\RoleScopeSeeder;
@@ -71,6 +73,29 @@ class TokenIntrospectionTest extends TestCase
             ->assertJsonPath('sub', null)
             ->assertJsonPath('user', null)
             ->assertJsonPath('scope', 'introspect');
+    }
+
+    public function test_introspection_reports_the_api_a_token_was_issued_for(): void
+    {
+        $api = Api::factory()->create(['name' => 'api-maestros']);
+        OAuthScope::factory()->for($api)->create(['name' => 'geografia:leer']);
+
+        $client = app(ClientRepository::class)->createClientCredentialsGrantClient('Sistema X');
+        Role::factory()->withScopes(['geografia:leer'])->create()->clients()->attach($client->getKey());
+
+        $apiToken = $this->postJson('/oauth/token', [
+            'grant_type' => 'client_credentials',
+            'client_id' => $client->getKey(),
+            'client_secret' => $client->plainSecret,
+            'api' => 'api-maestros',
+        ])->assertOk()->json('access_token');
+
+        $this->withToken($this->serviceToken())
+            ->postJson('/api/v1/auth/introspect', ['token' => $apiToken])
+            ->assertOk()
+            ->assertJsonPath('active', true)
+            ->assertJsonPath('aud', [$client->getKey(), 'api-maestros'])
+            ->assertJsonPath('scope', 'geografia:leer');
     }
 
     public function test_revoked_or_invalid_tokens_are_inactive(): void

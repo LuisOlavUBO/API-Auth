@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\AccessToken;
 use App\Services\ScopeRepository;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Connection;
@@ -58,6 +59,9 @@ class AppServiceProvider extends ServiceProvider
     protected function configurePassport(): void
     {
         Passport::enablePasswordGrant();
+
+        // Tokens issued for one API name it in "aud".
+        Passport::useAccessTokenEntity(AccessToken::class);
 
         Passport::defaultScopes(config('oauth.default_scopes'));
 

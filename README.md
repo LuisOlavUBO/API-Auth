@@ -129,7 +129,7 @@ Un cliente `client_credentials` puede mandar `api=<nombre de la API>` para obten
 - Si la API no existe: `400 invalid_request` (`Unknown API [...]`).
 - Si el cliente no tiene scopes en esa API: `400 invalid_scope` (`The client has no scopes in API [...]`), en vez de emitir un token vacío.
 
-Así, un token filtrado solo sirve en la API que lo recibió. UBO.Common pide los tokens de esta forma y guarda uno en caché por API.
+El token nombra la API en su `aud`, después del client id: `"aud": ["<client id>", "api-maestros"]`. La introspección devuelve el mismo `aud`. Una API que usa UBO.Common con `UBO_AUTH_API=<su nombre>` rechaza los tokens de sistema emitidos para otra API, así que un token filtrado solo sirve en la API que lo recibió, sin depender de cómo se nombren los scopes. UBO.Common pide los tokens de esta forma y guarda uno en caché por API.
 
 ### Registrar un sistema que consume varias APIs
 

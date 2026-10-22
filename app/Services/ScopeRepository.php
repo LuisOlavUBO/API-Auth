@@ -90,6 +90,7 @@ class ScopeRepository extends PassportScopeRepository
         }
 
         $allowed = OAuthScope::namesForClientInApi($clientId, $apiName);
+        request()->attributes->set(AccessToken::API_ATTRIBUTE, $apiName);
 
         if (request()->filled('scope')) {
             foreach ($scopes as $scope) {

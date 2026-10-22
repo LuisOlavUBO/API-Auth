@@ -6,6 +6,10 @@ use App\Exceptions\OAuthTokenException;
 use GuzzleHttp\Psr7\Response as Psr7Response;
 use GuzzleHttp\Psr7\ServerRequest;
 use Laravel\Passport\Passport;
+use Lcobucci\JWT\Encoding\JoseEncoder;
+use Lcobucci\JWT\Token\Parser;
+use Lcobucci\JWT\Token\RegisteredClaims;
+use Lcobucci\JWT\UnencryptedToken;
 use League\OAuth2\Server\AuthorizationServer;
 use League\OAuth2\Server\Exception\OAuthServerException;
 use League\OAuth2\Server\ResourceServer;
@@ -58,7 +62,10 @@ class OAuthTokenService
      * so a subject equal to the client (UUIDs compare case-insensitively)
      * is reported as having no user.
      *
-     * @return array{token_id: string, client_id: string, user_id: string|null, scopes: string[]}|null
+     * "audiences" is the token's "aud" claim: the client ID and, for tokens
+     * issued for one API, that API's name.
+     *
+     * @return array{token_id: string, client_id: string, user_id: string|null, scopes: string[], audiences: string[]}|null
      */
     public function introspect(string $accessToken): ?array
     {
@@ -79,7 +86,22 @@ class OAuthTokenService
             'client_id' => $clientId,
             'user_id' => $subject && strcasecmp($subject, $clientId) !== 0 ? $subject : null,
             'scopes' => $validated->getAttribute('oauth_scopes', []),
+            'audiences' => $this->audiencesOf($accessToken),
         ];
+    }
+
+    /**
+     * The "aud" claim of a token that the resource server already validated.
+     *
+     * @return string[]
+     */
+    protected function audiencesOf(string $accessToken): array
+    {
+        $token = (new Parser(new JoseEncoder))->parse($accessToken);
+
+        return $token instanceof UnencryptedToken
+            ? array_values($token->claims()->get(RegisteredClaims::AUDIENCE, []))
+            : [];
     }
 
     /**

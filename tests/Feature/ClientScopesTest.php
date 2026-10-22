@@ -55,9 +55,25 @@ class ClientScopesTest extends TestCase
      */
     protected function scopesOf(string $accessToken): array
     {
+        return $this->claimsOf($accessToken)['scopes'];
+    }
+
+    /**
+     * @return string[]
+     */
+    protected function audiencesOf(string $accessToken): array
+    {
+        return (array) $this->claimsOf($accessToken)['aud'];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function claimsOf(string $accessToken): array
+    {
         $payload = explode('.', $accessToken)[1];
 
-        return json_decode(base64_decode(strtr($payload, '-_', '+/')), true)['scopes'];
+        return json_decode(base64_decode(strtr($payload, '-_', '+/')), true);
     }
 
     public function test_client_without_roles_cannot_request_scopes(): void
@@ -109,6 +125,17 @@ class ClientScopesTest extends TestCase
 
         $this->assertSame(['geografia:leer', 'homologacion:leer', 'sistemas:leer'], $this->scopesOf($maestros));
         $this->assertSame(['matricula:leer'], $this->scopesOf($matricula));
+    }
+
+    public function test_token_for_an_api_names_it_in_the_audience_after_the_client_id(): void
+    {
+        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['maestros-lector']]);
+
+        $forApi = $this->requestToken(null, 'api-maestros')->assertOk()->json('access_token');
+        $withoutApi = $this->requestToken('geografia:leer')->assertOk()->json('access_token');
+
+        $this->assertSame([$this->client->getKey(), 'api-maestros'], $this->audiencesOf($forApi));
+        $this->assertSame([$this->client->getKey()], $this->audiencesOf($withoutApi));
     }
 
     public function test_token_for_an_api_can_be_narrowed_to_some_of_its_scopes(): void
