@@ -5,11 +5,12 @@ services:
     container_name: api-auth
     restart: unless-stopped
     ports:
-      - "8000:80"
+      # En un servidor compartido el 8000 puede estar ocupado: definir DOCKER_APP_PORT en .env.
+      - "${DOCKER_APP_PORT:-8000}:80"
     env_file:
       - .env
     environment:
-      APP_URL: http://localhost:8000
+      APP_URL: ${DOCKER_APP_URL:-http://localhost:8000}
       LOG_CHANNEL: stderr
       RUN_MIGRATIONS: "false"
     volumes:
