@@ -4,6 +4,7 @@ Servicio OAuth2 que emite y valida tokens JWT para el resto de microservicios.
 
 - **Usuarios finales**: registro, login, refresh, perfil y logout (password grant, el secreto del cliente nunca sale del servidor).
 - **Otros microservicios**: se autentican con *client credentials* y validan tokens de usuario vía `/introspect`, o localmente con la clave pública.
+- **Documentación**: Swagger UI en `/docs/swagger` (la raíz `/` redirige ahí). El contrato está en [`docs/openapi/openapi.yaml`](docs/openapi/openapi.yaml) y se sirve en `/docs/openapi.yaml`; un test verifica que documente todas las rutas `/api`.
 
 ## Instalación
 
