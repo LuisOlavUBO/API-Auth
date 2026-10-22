@@ -11,6 +11,7 @@ vendor
 public/build
 public/hot
 storage/*.key
+database/*.sqlite*
 storage/logs/*
 storage/framework/cache/data/*
 storage/framework/sessions/*

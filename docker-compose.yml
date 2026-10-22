@@ -1,7 +1,8 @@
 services:
   api:
     build: .
-    image: api-auth:latest
+    # Publicada en GitHub Container Registry; en el servidor: docker compose pull && docker compose up -d
+    image: ghcr.io/luisolavubo/api-auth:${DOCKER_IMAGE_TAG:-latest}
     container_name: api-auth
     restart: unless-stopped
     ports:
