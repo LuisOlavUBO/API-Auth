@@ -5,6 +5,7 @@ Servicio OAuth2 que emite y valida tokens JWT para el resto de microservicios.
 - **Usuarios finales**: registro, login, refresh, perfil y logout (password grant, el secreto del cliente nunca sale del servidor).
 - **Otros microservicios**: se autentican con *client credentials* y validan tokens de usuario vía `/introspect`, o localmente con la clave pública.
 - **Documentación**: Swagger UI en `/docs/swagger` (la raíz `/` redirige ahí). El contrato está en [`docs/openapi/openapi.yaml`](docs/openapi/openapi.yaml) y se sirve en `/docs/openapi.yaml`; un test verifica que documente todas las rutas `/api`.
+- **Estándar UBO**: errores RFC 9457, tracing con [`ubo/common`](https://github.com/LuisOlavUBO/UBO-Common) y tests contra SQL Server, como [API-Maestros](../API-Maestros).
 
 ## Instalación
 
@@ -64,7 +65,7 @@ docker compose up -d --build
 
 ### Despliegue
 
-`docker-compose.prod.yml` levanta `app` (imagen de `Dockerfile.prod`) y `nginx`. La imagen no incluye dependencias de desarrollo, `.env` ni llaves. Al arrancar, el entrypoint valida las variables críticas, carga las llaves y ejecuta `php artisan optimize`. Con `RUN_MIGRATIONS=true` también corre las migraciones.
+`docker-compose.prod.yml` levanta `app` (imagen de `Dockerfile.prod`) y `nginx`. La imagen no incluye dependencias de desarrollo, `.env` ni llaves; `ubo/common` se descarga de GitHub como cualquier otra dependencia, sin credenciales. Al arrancar, el entrypoint valida las variables críticas, carga las llaves y ejecuta `php artisan optimize`. Con `RUN_MIGRATIONS=true` también corre las migraciones.
 
 Construir y publicar, en el PC:
 
@@ -140,6 +141,18 @@ Las rutas `/api/v1/*` responden los errores como `application/problem+json`, igu
 Los fallos de login y refresh conservan su código OAuth en `error`, como antes. Lo que cambió para quien consume: el texto pasa de `message` a `detail`, y los errores de validación de `errors` a `errores`.
 
 `POST /oauth/token` **no cambia**: lo atiende Passport con el formato OAuth2 (`{error, error_description, hint}`), que esperan los clientes OAuth y `HttpServiceTokenProvider` de UBO.Common. La introspección mantiene su `200` (`active` true/false) y sus estados de error: `IntrospectionValidator` de UBO.Common solo mira el estado (con `401` renueva su token y reintenta).
+
+### Tracing (UBO.Common)
+
+Esta API instala [`ubo/common`](https://github.com/LuisOlavUBO/UBO-Common) solo por el módulo **Tracing** ([config/ubo-common.php](config/ubo-common.php)): continúa el `traceparent` de quien llama (W3C Trace Context) o empieza una traza, agrega `trace_id`, `span_id` y `parent_span_id` a cada línea de log y devuelve el header `X-Trace-Id`, también en los errores. Así una llamada de API-Maestros a `/oauth/token` o `/introspect` queda con el mismo `trace_id` en los logs de ambas.
+
+| Variable | Valor | Uso |
+|---|---|---|
+| `UBO_COMMON_AUTH` | `false` | Esta API emite los tokens y los valida con Passport: no debe validarse contra sí misma |
+| `UBO_COMMON_API_CLIENT` | `false` | Esta API no llama a otras APIs de la UBO |
+| `UBO_TRACING_RESPONSE_HEADER` | `X-Trace-Id` | Header de respuesta con el `trace_id` (vacío: no se envía) |
+
+Ambos módulos quedan apagados aunque falten las variables. Para traer una versión nueva: `composer update ubo/common`.
 
 ### Ejemplo
 

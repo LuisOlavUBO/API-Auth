@@ -32,6 +32,8 @@ info:
 
     `POST /oauth/token` es el endpoint estándar de Passport y mantiene el formato OAuth2
     (`{error, error_description}`).
+
+    Toda respuesta trae el header `X-Trace-Id` con el `trace_id` de la petición (UBO.Common, módulo Tracing).
   license:
     name: Uso interno
     identifier: LicenseRef-uso-interno

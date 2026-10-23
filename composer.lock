@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "8a62c17a2fc1945f2eb23c05ac284c6c",
+    "content-hash": "473d2dfd22bd9d6c50e2109cf270dce5",
     "packages": [
         {
             "name": "brick/math",
@@ -6932,6 +6932,80 @@
                 "source": "https://github.com/tijsverkoyen/CssToInlineStyles/tree/v2.4.0"
             },
             "time": "2025-12-02T11:56:42+00:00"
+        },
+        {
+            "name": "ubo/common",
+            "version": "v2.2.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/LuisOlavUBO/UBO-Common.git",
+                "reference": "00ff7e10fcda2561749fae83a077376498140f1f"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/LuisOlavUBO/UBO-Common/zipball/00ff7e10fcda2561749fae83a077376498140f1f",
+                "reference": "00ff7e10fcda2561749fae83a077376498140f1f",
+                "shasum": ""
+            },
+            "require": {
+                "guzzlehttp/guzzle": "^7.8|^8.0",
+                "illuminate/cache": "^12.0|^13.0",
+                "illuminate/console": "^12.0|^13.0",
+                "illuminate/http": "^12.0|^13.0",
+                "illuminate/log": "^12.0|^13.0",
+                "illuminate/support": "^12.0|^13.0",
+                "lcobucci/jwt": "^5.3",
+                "php": "^8.3",
+                "psr/clock": "^1.0"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.27",
+                "orchestra/testbench": "^10.0|^11.0",
+                "pestphp/pest": "^3.8|^4.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "UBO\\Common\\UboCommonServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "UBO\\Common\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "UBO\\Common\\Tests\\": "tests/"
+                }
+            },
+            "scripts": {
+                "test": [
+                    "pest"
+                ],
+                "lint": [
+                    "pint"
+                ]
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "UBO.Common: shared building blocks for UBO Laravel APIs and their consumers.",
+            "keywords": [
+                "api-client",
+                "laravel",
+                "m2m",
+                "oauth2",
+                "tracing",
+                "ubo"
+            ],
+            "support": {
+                "source": "https://github.com/LuisOlavUBO/UBO-Common/tree/v2.2.0",
+                "issues": "https://github.com/LuisOlavUBO/UBO-Common/issues"
+            },
+            "time": "2026-10-23T14:45:33+00:00"
         },
         {
             "name": "vlucas/phpdotenv",
