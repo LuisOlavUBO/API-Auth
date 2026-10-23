@@ -306,12 +306,45 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorPassport' }
 
+  /api/v1/salud:
+    get:
+      tags: [Salud]
+      summary: Estado de la API y de la base de datos
+      description: |
+        Ejecuta una consulta trivial en la base de datos. Lo usa el healthcheck de nginx en
+        `docker-compose.prod.yml`. Misma ruta y forma que en las demás APIs de la UBO.
+      operationId: salud
+      security: []
+      responses:
+        '200':
+          description: API y base de datos operativas.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [estado, base_datos]
+                additionalProperties: false
+                properties:
+                  estado: { type: string, enum: [OK] }
+                  base_datos: { type: string, enum: [OK] }
+        '503':
+          description: Base de datos no disponible.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [estado, base_datos]
+                additionalProperties: false
+                properties:
+                  estado: { type: string, enum: [ERROR] }
+                  base_datos: { type: string, enum: [NO_DISPONIBLE] }
+
   /up:
     get:
       tags: [Salud]
-      summary: Salud del servicio
-      description: Health check de Laravel. Responde `200` si la aplicación arrancó.
-      operationId: salud
+      summary: Salud del proceso
+      description: Health check de Laravel. Responde `200` si la aplicación arrancó; no consulta la base.
+      operationId: saludProceso
       security: []
       responses:
         '200':

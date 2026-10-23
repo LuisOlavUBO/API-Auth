@@ -65,7 +65,7 @@ docker compose up -d --build
 
 ### Despliegue
 
-`docker-compose.prod.yml` levanta `app` (imagen de `Dockerfile.prod`) y `nginx`. La imagen no incluye dependencias de desarrollo, `.env` ni llaves; `ubo/common` se descarga de GitHub como cualquier otra dependencia, sin credenciales. Al arrancar, el entrypoint valida las variables críticas, carga las llaves y ejecuta `php artisan optimize`. Con `RUN_MIGRATIONS=true` también corre las migraciones.
+`docker-compose.prod.yml` levanta `app` (imagen de `Dockerfile.prod`) y `nginx`. El healthcheck de nginx llama a `/api/v1/salud`, que consulta la base, así que el estado `healthy` cubre nginx → PHP-FPM → SQL Server. La imagen no incluye dependencias de desarrollo, `.env` ni llaves; `ubo/common` se descarga de GitHub como cualquier otra dependencia, sin credenciales. Al arrancar, el entrypoint valida las variables críticas, carga las llaves y ejecuta `php artisan optimize`. Con `RUN_MIGRATIONS=true` también corre las migraciones.
 
 Construir y publicar, en el PC:
 
@@ -107,7 +107,7 @@ El compose fuerza `APP_ENV=production`, `APP_DEBUG=false` y `LOG_CHANNEL=stderr`
 | POST | `/introspect` | Bearer (cliente, scope `introspect`) | `token` → `{ active, sub, client_id, scope, exp, user }` |
 | GET | `/public-key` | — | Clave pública PEM para verificar JWT localmente |
 
-Además Passport expone `POST /oauth/token` (estándar OAuth2), usado por los microservicios para el grant `client_credentials`.
+Además Passport expone `POST /oauth/token` (estándar OAuth2), usado por los microservicios para el grant `client_credentials`, y `GET /api/v1/salud` responde `{"estado": "OK", "base_datos": "OK"}` o `503` si la base no responde (misma ruta y forma que en API-Maestros). `/up` solo indica que Laravel arrancó.
 
 Los endpoints públicos de `register`/`login`/`refresh` tienen rate limit de 10 req/min por email+IP.
 
@@ -335,4 +335,5 @@ php artisan test
 - [app/Services/ScopeRepository.php](app/Services/ScopeRepository.php) — catálogo de scopes en BD y filtrado por rol.
 - [app/Services/AccessToken.php](app/Services/AccessToken.php), [AccessTokenRepository.php](app/Services/AccessTokenRepository.php) y [TokenAudience.php](app/Services/TokenAudience.php) — el `aud` de los tokens por API: `ScopeRepository` valida `api` y lo deja en `TokenAudience`, y el repositorio crea el token con esa API.
 - [app/Exceptions/ProblemRenderer.php](app/Exceptions/ProblemRenderer.php) — errores RFC 9457 de `/api/*`.
+- [app/Http/Controllers/HealthController.php](app/Http/Controllers/HealthController.php) — `/api/v1/salud`.
 - [routes/api.php](routes/api.php) — rutas.
