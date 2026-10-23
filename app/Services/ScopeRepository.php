@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Support\Collection;
 use Laravel\Passport\Bridge\Scope;
 use Laravel\Passport\Bridge\ScopeRepository as PassportScopeRepository;
+use Laravel\Passport\ClientRepository;
 use Laravel\Passport\Passport;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Entities\ScopeEntityInterface;
@@ -20,6 +21,11 @@ use League\OAuth2\Server\Exception\OAuthServerException;
  */
 class ScopeRepository extends PassportScopeRepository
 {
+    public function __construct(ClientRepository $clients, protected TokenAudience $audience)
+    {
+        parent::__construct($clients);
+    }
+
     /**
      * Only scopes registered in oauth_scopes exist ("*" is not one of them).
      */
@@ -36,7 +42,9 @@ class ScopeRepository extends PassportScopeRepository
      * without roles get no scopes.
      *
      * A client credentials request with an "api" parameter gets a token for
-     * that API only (see scopesForApi).
+     * that API only (see scopesForApi). league/oauth2-server does not pass the
+     * request here, so "api" is read from the current HTTP request: client
+     * credentials tokens are only issued by POST /oauth/token.
      *
      * @param  ScopeEntityInterface[]  $scopes
      * @return ScopeEntityInterface[]
@@ -50,6 +58,8 @@ class ScopeRepository extends PassportScopeRepository
         ?string $userIdentifier = null,
         ?string $authCodeId = null
     ): array {
+        $this->audience->issueFor(null);
+
         $apiName = request()->input('api');
 
         if ($grantType === 'client_credentials' && is_string($apiName) && $apiName !== '') {
@@ -90,7 +100,7 @@ class ScopeRepository extends PassportScopeRepository
         }
 
         $allowed = OAuthScope::namesForClientInApi($clientId, $apiName);
-        request()->attributes->set(AccessToken::API_ATTRIBUTE, $apiName);
+        $this->audience->issueFor($apiName);
 
         if (request()->filled('scope')) {
             foreach ($scopes as $scope) {

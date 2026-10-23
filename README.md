@@ -333,5 +333,6 @@ php artisan test
 - [app/Http/Controllers/Auth/TokenIntrospectionController.php](app/Http/Controllers/Auth/TokenIntrospectionController.php) — introspección y clave pública.
 - [app/Providers/AppServiceProvider.php](app/Providers/AppServiceProvider.php) — grants, TTL, rate limiting y binding del ScopeRepository.
 - [app/Services/ScopeRepository.php](app/Services/ScopeRepository.php) — catálogo de scopes en BD y filtrado por rol.
+- [app/Services/AccessToken.php](app/Services/AccessToken.php), [AccessTokenRepository.php](app/Services/AccessTokenRepository.php) y [TokenAudience.php](app/Services/TokenAudience.php) — el `aud` de los tokens por API: `ScopeRepository` valida `api` y lo deja en `TokenAudience`, y el repositorio crea el token con esa API.
 - [app/Exceptions/ProblemRenderer.php](app/Exceptions/ProblemRenderer.php) — errores RFC 9457 de `/api/*`.
 - [routes/api.php](routes/api.php) — rutas.
