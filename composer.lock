@@ -6935,16 +6935,16 @@
         },
         {
             "name": "ubo/common",
-            "version": "v2.3.0",
+            "version": "v2.3.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/LuisOlavUBO/UBO-Common.git",
-                "reference": "c0140308312806ffa970a9650d2ea81bff3b6efa"
+                "reference": "f2c744a4e3a42d2af812503e3e1a1a71942ee899"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/LuisOlavUBO/UBO-Common/zipball/c0140308312806ffa970a9650d2ea81bff3b6efa",
-                "reference": "c0140308312806ffa970a9650d2ea81bff3b6efa",
+                "url": "https://api.github.com/repos/LuisOlavUBO/UBO-Common/zipball/f2c744a4e3a42d2af812503e3e1a1a71942ee899",
+                "reference": "f2c744a4e3a42d2af812503e3e1a1a71942ee899",
                 "shasum": ""
             },
             "require": {
@@ -7009,10 +7009,10 @@
                 "ubo"
             ],
             "support": {
-                "source": "https://github.com/LuisOlavUBO/UBO-Common/tree/v2.3.0",
+                "source": "https://github.com/LuisOlavUBO/UBO-Common/tree/v2.3.1",
                 "issues": "https://github.com/LuisOlavUBO/UBO-Common/issues"
             },
-            "time": "2026-10-23T18:28:01+00:00"
+            "time": "2026-10-23T19:26:32+00:00"
         },
         {
             "name": "vlucas/phpdotenv",

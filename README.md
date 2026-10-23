@@ -70,8 +70,8 @@ docker compose up -d --build
 Construir y publicar, en el PC:
 
 ```bash
-IMAGE=ghcr.io/luisolavubo/api-auth:1.1.0 docker compose -f docker-compose.prod.yml build app
-docker push ghcr.io/luisolavubo/api-auth:1.1.0
+IMAGE=ghcr.io/luisolavubo/api-auth:2.0.0 docker compose -f docker-compose.prod.yml build app
+docker push ghcr.io/luisolavubo/api-auth:2.0.0
 ```
 
 En el servidor, `~/projects/api-auth` contiene solo:
