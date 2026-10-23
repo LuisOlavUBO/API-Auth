@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Services\DatabaseHealth;
 use Tests\TestCase;
+use UBO\Common\Health\DatabaseHealth;
 
 class HealthTest extends TestCase
 {

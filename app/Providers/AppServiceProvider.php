@@ -7,11 +7,7 @@ use App\Services\ScopeRepository;
 use App\Services\TokenAudience;
 use Illuminate\Cache\RateLimiter;
 use Illuminate\Cache\RateLimiting\Limit;
-use Illuminate\Database\Connection;
-use Illuminate\Database\Events\ConnectionEstablished;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Passport\Bridge\AccessTokenRepository as PassportAccessTokenRepository;
 use Laravel\Passport\Bridge\ScopeRepository as PassportScopeRepository;
@@ -39,21 +35,6 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configurePassport();
-
-        // The shared SQL Server login defaults to Spanish (dmy), which breaks
-        // Laravel's "Y-m-d H:i:s" timestamps; force ymd for this app only.
-        $useYmd = function (Connection $connection) {
-            if ($connection->getDriverName() === 'sqlsrv') {
-                $connection->unprepared('SET DATEFORMAT ymd');
-            }
-        };
-
-        Event::listen(fn (ConnectionEstablished $event) => $useYmd($event->connection));
-
-        // Connections opened before this provider booted.
-        foreach (DB::getConnections() as $connection) {
-            $useYmd($connection);
-        }
 
         // Registered when the limiter is first used: resolving it here would open
         // the cache store (and its connection) on every artisan command.

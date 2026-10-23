@@ -34,7 +34,7 @@ El secreto se guarda hasheado en la base de datos y solo se muestra una vez.
 
 Usa SQL Server 2016 (base **`apiauth`**), dedicada solo a autenticación: usuarios, tokens y clientes OAuth. La API se conecta con el login propio **`apiauth_app`**, que no es sysadmin. Solo tiene acceso a `apiauth`, con los roles `db_datareader`, `db_datawriter` y `db_ddladmin`; este último sirve para correr las migraciones. Su idioma por defecto es `us_english` y su base por defecto es `apiauth`. Completa `DB_HOST`, `DB_USERNAME` y `DB_PASSWORD` en `.env`. Requiere las extensiones `sqlsrv`/`pdo_sqlsrv` y el ODBC Driver 18.
 
-El login del servidor tiene idioma español (formato de fecha `dmy`). Por eso [AppServiceProvider.php](app/Providers/AppServiceProvider.php) ejecuta `SET DATEFORMAT ymd` en cada conexión. Sin ese ajuste, Laravel no puede guardar las fechas.
+El login del servidor tiene idioma español (formato de fecha `dmy`). Por eso el módulo **SqlServer** de UBO.Common ([config/ubo-common.php](config/ubo-common.php)) ejecuta `SET DATEFORMAT ymd` en cada conexión. Sin ese ajuste, Laravel no puede guardar las fechas.
 
 Los tests corren contra SQL Server, en la base `apiauth_test` (ver [Tests](#tests)).
 
@@ -113,7 +113,7 @@ Los endpoints públicos de `register`/`login`/`refresh` tienen rate limit de 10 
 
 ### Errores (RFC 9457)
 
-Las rutas `/api/v1/*` responden los errores como `application/problem+json`, igual que las demás APIs de la UBO ([ProblemRenderer.php](app/Exceptions/ProblemRenderer.php)):
+Las rutas `/api/v1/*` responden los errores como `application/problem+json`, igual que las demás APIs de la UBO. Los presenta el `ProblemRenderer` del módulo **Problems** de UBO.Common, registrado en [bootstrap/app.php](bootstrap/app.php). Los fallos de login y refresh son una `OAuthTokenException` ([OAuthTokenException.php](app/Exceptions/OAuthTokenException.php)), un error de negocio (`DomainProblem`) de esta API que el renderizador presenta con su código OAuth:
 
 ```json
 {
@@ -138,13 +138,13 @@ Las rutas `/api/v1/*` responden los errores como `application/problem+json`, igu
 | `RUTA_NO_ENCONTRADA` / `METODO_NO_PERMITIDO` | 404 / 405 | La ruta o el método no existen |
 | `ERROR_INTERNO` | 500 | Error inesperado; el detalle queda solo en el log |
 
-Los fallos de login y refresh conservan su código OAuth en `error`, como antes. Lo que cambió para quien consume: el texto pasa de `message` a `detail`, y los errores de validación de `errors` a `errores`.
+Los fallos de login y refresh conservan su código OAuth en `error`, como antes. Si Passport rechaza el cliente password (`invalid_client`), es un error de configuración del servidor: responde `500` y el motivo queda solo en el log. Los demás fallos (contraseña incorrecta, refresh token vencido o revocado, scope inválido) son esperables y no se registran en el log. Lo que cambió para quien consume: el texto pasa de `message` a `detail`, y los errores de validación de `errors` a `errores`.
 
 `POST /oauth/token` **no cambia**: lo atiende Passport con el formato OAuth2 (`{error, error_description, hint}`), que esperan los clientes OAuth y `HttpServiceTokenProvider` de UBO.Common. La introspección mantiene su `200` (`active` true/false) y sus estados de error: `IntrospectionValidator` de UBO.Common solo mira el estado (con `401` renueva su token y reintenta).
 
 ### Tracing (UBO.Common)
 
-Esta API instala [`ubo/common`](https://github.com/LuisOlavUBO/UBO-Common) solo por el módulo **Tracing** ([config/ubo-common.php](config/ubo-common.php)): continúa el `traceparent` de quien llama (W3C Trace Context) o empieza una traza, agrega `trace_id`, `span_id` y `parent_span_id` a cada línea de log y devuelve el header `X-Trace-Id`, también en los errores. Así una llamada de API-Maestros a `/oauth/token` o `/introspect` queda con el mismo `trace_id` en los logs de ambas.
+Esta API usa de [`ubo/common`](https://github.com/LuisOlavUBO/UBO-Common) los módulos **Tracing**, **Problems** (errores de `/api/*`), **Health** (`/api/v1/salud`) y **SqlServer** (`SET DATEFORMAT ymd`), encendidos en [config/ubo-common.php](config/ubo-common.php). Tracing continúa el `traceparent` de quien llama (W3C Trace Context) o empieza una traza, agrega `trace_id`, `span_id` y `parent_span_id` a cada línea de log y devuelve el header `X-Trace-Id`, también en los errores. Así una llamada de API-Maestros a `/oauth/token` o `/introspect` queda con el mismo `trace_id` en los logs de ambas.
 
 | Variable | Valor | Uso |
 |---|---|---|
@@ -334,6 +334,7 @@ php artisan test
 - [app/Providers/AppServiceProvider.php](app/Providers/AppServiceProvider.php) — grants, TTL, rate limiting y binding del ScopeRepository.
 - [app/Services/ScopeRepository.php](app/Services/ScopeRepository.php) — catálogo de scopes en BD y filtrado por rol.
 - [app/Services/AccessToken.php](app/Services/AccessToken.php), [AccessTokenRepository.php](app/Services/AccessTokenRepository.php) y [TokenAudience.php](app/Services/TokenAudience.php) — el `aud` de los tokens por API: `ScopeRepository` valida `api` y lo deja en `TokenAudience`, y el repositorio crea el token con esa API.
-- [app/Exceptions/ProblemRenderer.php](app/Exceptions/ProblemRenderer.php) — errores RFC 9457 de `/api/*`.
-- [app/Http/Controllers/HealthController.php](app/Http/Controllers/HealthController.php) — `/api/v1/salud`.
+- [bootstrap/app.php](bootstrap/app.php) — errores RFC 9457 de `/api/*` con el `ProblemRenderer` de UBO.Common.
+- [app/Exceptions/OAuthTokenException.php](app/Exceptions/OAuthTokenException.php) — fallos de login y refresh: código OAuth, título y qué se registra en el log.
+- [config/ubo-common.php](config/ubo-common.php) — módulos de UBO.Common: Tracing, Problems, Health (`/api/v1/salud`) y SqlServer.
 - [routes/api.php](routes/api.php) — rutas.

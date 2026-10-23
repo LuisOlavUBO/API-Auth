@@ -6,9 +6,11 @@ use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\RoleScopeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
 use Laravel\Passport\ClientRepository;
+use Mockery;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -76,6 +78,32 @@ class ProblemDetailsTest extends TestCase
             'email' => 'ana@example.com',
             'password' => 'wrong-password',
         ]), 401, 'invalid_grant')->assertJsonPath('title', 'Credenciales inválidas');
+    }
+
+    public function test_failed_logins_are_not_logged_as_errors(): void
+    {
+        Log::spy();
+
+        $this->postJson('/api/v1/auth/login', ['email' => 'ana@example.com', 'password' => 'wrong-password'])
+            ->assertUnauthorized();
+
+        Log::shouldNotHaveReceived('error');
+    }
+
+    public function test_a_rejected_password_client_answers_500_and_logs_the_reason(): void
+    {
+        config(['oauth.password_client.secret' => 'wrong-secret']);
+        Log::spy();
+
+        $this->assertProblem($this->postJson('/api/v1/auth/login', [
+            'email' => 'ana@example.com',
+            'password' => 'secret-password',
+        ]), 500, 'invalid_client')
+            ->assertJsonPath('detail', 'El servicio de autenticación no está bien configurado.')
+            ->assertDontSee('Client authentication failed');
+
+        Log::shouldHaveReceived('error')->once()
+            ->with(Mockery::on(fn (string $message) => str_starts_with($message, 'The password grant client was rejected: ')));
     }
 
     public function test_the_rate_limit_answers_a_problem_with_retry_after(): void

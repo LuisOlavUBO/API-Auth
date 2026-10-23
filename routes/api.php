@@ -2,10 +2,10 @@
 
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\TokenIntrospectionController;
-use App\Http\Controllers\HealthController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Passport\Http\Middleware\CheckToken;
 use Laravel\Passport\Http\Middleware\EnsureClientIsResourceOwner;
+use UBO\Common\Health\Http\Controllers\HealthController;
 
 Route::prefix('v1/auth')->group(function () {
     Route::middleware('throttle:auth')->group(function () {
