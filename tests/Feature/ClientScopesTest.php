@@ -134,8 +134,11 @@ class ClientScopesTest extends TestCase
         $forApi = $this->requestToken(null, 'api-maestros')->assertOk()->json('access_token');
         $withoutApi = $this->requestToken('geografia:leer')->assertOk()->json('access_token');
 
-        $this->assertSame([$this->client->getKey(), 'api-maestros'], $this->audiencesOf($forApi));
-        $this->assertSame([$this->client->getKey()], $this->audiencesOf($withoutApi));
+        // SQL Server returns uniqueidentifier keys in upper case: the token carries the stored id.
+        $clientId = $this->client->fresh()->getKey();
+
+        $this->assertSame([$clientId, 'api-maestros'], $this->audiencesOf($forApi));
+        $this->assertSame([$clientId], $this->audiencesOf($withoutApi));
     }
 
     public function test_token_for_an_api_can_be_narrowed_to_some_of_its_scopes(): void

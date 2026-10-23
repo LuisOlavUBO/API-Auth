@@ -94,7 +94,7 @@ class TokenIntrospectionTest extends TestCase
             ->postJson('/api/v1/auth/introspect', ['token' => $apiToken])
             ->assertOk()
             ->assertJsonPath('active', true)
-            ->assertJsonPath('aud', [$client->getKey(), 'api-maestros'])
+            ->assertJsonPath('aud', [$client->fresh()->getKey(), 'api-maestros'])
             ->assertJsonPath('scope', 'geografia:leer');
     }
 

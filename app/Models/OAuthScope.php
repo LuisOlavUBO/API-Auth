@@ -23,6 +23,19 @@ class OAuthScope extends Model
     protected $table = 'oauth_scopes';
 
     /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            // pdo_sqlsrv returns integer columns as strings.
+            'api_id' => 'integer',
+        ];
+    }
+
+    /**
      * API that requires this scope on its endpoints.
      */
     public function api(): BelongsTo

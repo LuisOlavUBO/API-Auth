@@ -4,13 +4,13 @@ namespace App\Providers;
 
 use App\Services\AccessToken;
 use App\Services\ScopeRepository;
+use Illuminate\Cache\RateLimiter;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Events\ConnectionEstablished;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Passport\Bridge\ScopeRepository as PassportScopeRepository;
 use Laravel\Passport\Passport;
@@ -48,8 +48,12 @@ class AppServiceProvider extends ServiceProvider
             $useYmd($connection);
         }
 
-        RateLimiter::for('auth', function (Request $request) {
-            return Limit::perMinute(10)->by($request->input('email').'|'.$request->ip());
+        // Registered when the limiter is first used: resolving it here would open
+        // the cache store (and its connection) on every artisan command.
+        $this->callAfterResolving(RateLimiter::class, function (RateLimiter $limiter) {
+            $limiter->for('auth', function (Request $request) {
+                return Limit::perMinute(10)->by($request->input('email').'|'.$request->ip());
+            });
         });
     }
 

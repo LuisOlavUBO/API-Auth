@@ -8,6 +8,8 @@ Servicio OAuth2 que emite y valida tokens JWT para el resto de microservicios.
 
 ## Instalación
 
+Requiere PHP 8.4 con `pdo_sqlsrv` y `sqlsrv`.
+
 ```bash
 composer install
 cp .env.example .env
@@ -33,7 +35,11 @@ Usa SQL Server 2016 (base **`apiauth`**), dedicada solo a autenticación: usuari
 
 El login del servidor tiene idioma español (formato de fecha `dmy`). Por eso [AppServiceProvider.php](app/Providers/AppServiceProvider.php) ejecuta `SET DATEFORMAT ymd` en cada conexión. Sin ese ajuste, Laravel no puede guardar las fechas.
 
-Los tests usan SQLite en memoria y no tocan el servidor.
+Los tests corren contra SQL Server, en la base `apiauth_test` (ver [Tests](#tests)).
+
+### Caché y rate limiter
+
+`CACHE_STORE=database`: lo único que usa la caché es el rate limiter de `register`/`login`/`refresh`, que cuenta los intentos en la tabla `cache` de `apiauth`. No usa Redis a propósito: para este volumen la base alcanza, y un servicio más sería otro punto de falla para el login del que dependen todas las APIs. Las sesiones (`SESSION_DRIVER`) y la cola también están en la base de datos: la API no usa sesiones fuera de la página de Swagger.
 
 En producción (o contenedores) puedes pasar las claves por entorno en vez de archivos: `PASSPORT_PRIVATE_KEY` y `PASSPORT_PUBLIC_KEY`.
 
@@ -52,11 +58,9 @@ docker compose up -d --build
 ```
 
 - La API queda en `http://localhost:8000`. El puerto se cambia con `DOCKER_HTTP_PORT` en el `.env`.
+- La base de datos es la del `.env`.
 - El código llega por bind mount, y Laravel lee el `.env` del proyecto. `vendor/` vive en un volumen del contenedor: si cambian `composer.json` o `composer.lock`, `docker compose up -d --build -V`.
-- Las llaves de Passport se montan en `/run/keys` y el entrypoint las pasa por contenido (`PASSPORT_PRIVATE_KEY`/`PASSPORT_PUBLIC_KEY`), porque Passport rechaza los permisos 777 de los bind mounts en Windows. `docker compose exec` no pasa por el entrypoint, así que los comandos que usan las llaves, como los tests, se corren con `run`:
-  ```bash
-  docker compose run --rm --no-deps app php artisan test
-  ```
+- Las llaves de Passport se montan en `/run/keys` y el entrypoint las pasa por contenido (`PASSPORT_PRIVATE_KEY`/`PASSPORT_PUBLIC_KEY`), porque Passport rechaza los permisos 777 de los bind mounts en Windows. `docker compose exec` no pasa por el entrypoint, así que los comandos que usan las llaves, como los tests, se corren con `run` (ver [Tests](#tests)).
 
 ### Despliegue
 
@@ -247,6 +251,36 @@ php artisan passport:purge
 ```bash
 php artisan test
 ```
+
+- **Base de datos:** corren contra **SQL Server**, en la base `apiauth_test` ([phpunit.xml](phpunit.xml)), nunca SQLite: SQL Server devuelve, por ejemplo, los `uniqueidentifier` de los clientes en mayúsculas y los enteros como texto, y SQLite no lo detecta. No corras dos suites al mismo tiempo contra la misma base: `RefreshDatabase` hace que se bloqueen entre sí.
+- **SQL Server en Docker (recomendado):** el login `apiauth_app` del servidor de desarrollo no tiene acceso a otra base. Define `DOCKER_MSSQL_SA_PASSWORD` en el `.env` (mínimo 8 caracteres con mayúsculas, minúsculas, números y símbolos) y levanta solo `sqlserver` y `sqlserver-init`, que crea `apiauth_test` con la collation de `apiauth` (`SQL_Latin1_General_CP1_CI_AS`):
+  ```bash
+  docker compose up -d sqlserver sqlserver-init
+  ```
+  Están en el perfil `tests`, así que `docker compose up -d` no los levanta. El puerto publicado es `14334` (se cambia con `DOCKER_MSSQL_PORT`), para no chocar con el `14333` de API-Maestros. Espera a que `sqlserver-init` termine (`docker compose ps -a sqlserver-init` muestra `exited (0)`) y corre los tests desde el host con el usuario `sa`. Las variables de entorno tienen prioridad sobre el `.env`, que no se modifica.
+
+  En PowerShell:
+  ```powershell
+  $env:DB_HOST='127.0.0.1'; $env:DB_PORT='14334'; $env:DB_USERNAME='sa'
+  $env:DB_PASSWORD=(Select-String '^DOCKER_MSSQL_SA_PASSWORD=' .env).Line.Split('=', 2)[1]
+  php artisan test
+  ```
+  En bash:
+  ```bash
+  DB_HOST=127.0.0.1 DB_PORT=14334 DB_USERNAME=sa \
+    DB_PASSWORD="$(grep '^DOCKER_MSSQL_SA_PASSWORD=' .env | cut -d= -f2-)" php artisan test
+  ```
+  Desde el contenedor `app` (sin PHP en el host), apuntando al servicio `sqlserver`:
+  ```bash
+  docker compose run --rm --no-deps -e DB_HOST=sqlserver -e DB_PORT=1433 -e DB_USERNAME=sa \
+    -e DB_PASSWORD="$(grep '^DOCKER_MSSQL_SA_PASSWORD=' .env | cut -d= -f2-)" app php artisan test
+  ```
+  Las variables de PowerShell duran hasta cerrar la terminal. Para detener el contenedor: `docker compose stop sqlserver` (los datos quedan en el volumen `sqlserver-data`).
+- **Caché:** los tests usan el store `array`.
+- **Contrato:** `DocsTest` verifica que `docs/openapi/openapi.yaml` documente todas las rutas `/api`. Lint:
+  ```bash
+  npx @redocly/cli lint docs/openapi/openapi.yaml
+  ```
 
 ## Estructura
 
