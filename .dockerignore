@@ -1,21 +1,40 @@
-.git
+# Secrets: configuration comes from environment variables, never inside the image
 .env
 .env.*
-!.env.example
-.phpunit.result.cache
-.phpunit.cache
-.idea
-.vscode
-node_modules
-vendor
-public/build
-public/hot
 storage/*.key
+
+# Installed inside the image
+vendor
+node_modules
+
+# Generated at runtime
+bootstrap/cache/*.php
 database/*.sqlite*
 storage/logs/*
 storage/framework/cache/data/*
 storage/framework/sessions/*
 storage/framework/views/*
-bootstrap/cache/*.php
-Dockerfile
-docker-compose.yml
+storage/framework/testing/*
+public/build
+public/hot
+public/storage
+
+# Not needed to run the API (docs/ stays: it serves docs/openapi/openapi.yaml)
+.git
+.github
+.claude
+.idea
+.vscode
+tests
+phpunit.xml
+.phpunit.cache
+.phpunit.result.cache
+*.log
+AGENTS.md
+CLAUDE.md
+README.md
+
+# Docker files
+Dockerfile*
+docker-compose*.yml
+nginx

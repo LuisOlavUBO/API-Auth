@@ -41,6 +41,54 @@ En producción (o contenedores) puedes pasar las claves por entorno en vez de ar
 php artisan serve
 ```
 
+## Docker
+
+Sigue el estándar de las APIs Laravel de la UBO (como API-Admisión y API-Maestros): un contenedor PHP-FPM (`php:8.4-fpm-bookworm`) y su propio nginx, que usa la imagen oficial con [nginx/default.conf](nginx/default.conf) montado.
+
+### Desarrollo
+
+```bash
+docker compose up -d --build
+```
+
+- La API queda en `http://localhost:8000`. El puerto se cambia con `DOCKER_HTTP_PORT` en el `.env`.
+- El código llega por bind mount, y Laravel lee el `.env` del proyecto. `vendor/` vive en un volumen del contenedor: si cambian `composer.json` o `composer.lock`, `docker compose up -d --build -V`.
+- Las llaves de Passport se montan en `/run/keys` y el entrypoint las pasa por contenido (`PASSPORT_PRIVATE_KEY`/`PASSPORT_PUBLIC_KEY`), porque Passport rechaza los permisos 777 de los bind mounts en Windows. `docker compose exec` no pasa por el entrypoint, así que los comandos que usan las llaves, como los tests, se corren con `run`:
+  ```bash
+  docker compose run --rm --no-deps app php artisan test
+  ```
+
+### Despliegue
+
+`docker-compose.prod.yml` levanta `app` (imagen de `Dockerfile.prod`) y `nginx`. La imagen no incluye dependencias de desarrollo, `.env` ni llaves. Al arrancar, el entrypoint valida las variables críticas, carga las llaves y ejecuta `php artisan optimize`. Con `RUN_MIGRATIONS=true` también corre las migraciones.
+
+Construir y publicar, en el PC:
+
+```bash
+IMAGE=ghcr.io/luisolavubo/api-auth:1.1.0 docker compose -f docker-compose.prod.yml build app
+docker push ghcr.io/luisolavubo/api-auth:1.1.0
+```
+
+En el servidor, `~/projects/api-auth` contiene solo:
+
+| Archivo | Contenido | En SRV-CONTENEDOR viene de |
+|---|---|---|
+| `docker-compose.prod.yml` | El compose | El repo |
+| `nginx/default.conf` | Configuración de nginx | El repo |
+| `.env` | Variables de Compose: `IMAGE` y `DOCKER_HTTP_PORT_PROD` | `.env.srv-contenedor` |
+| `.env.prod` | Configuración de Laravel: `APP_KEY`, `APP_URL`, `DB_*`, `PASSPORT_*` | `.env.prod.srv-contenedor` |
+| `storage/oauth-*.key` | Llaves de Passport | Las mismas de la instancia local |
+
+Los `.env.*` y las llaves no se versionan. En el servidor:
+
+```bash
+chmod 600 .env .env.prod storage/oauth-*.key
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d --no-build
+```
+
+El compose fuerza `APP_ENV=production`, `APP_DEBUG=false` y `LOG_CHANNEL=stderr` (logs con `docker compose -f docker-compose.prod.yml logs app`). HTTPS se termina en el proxy inverso que esté delante del nginx.
+
 ## Endpoints (`/api/v1/auth`)
 
 | Método | Ruta | Auth | Descripción |

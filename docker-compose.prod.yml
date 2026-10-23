@@ -1,0 +1,68 @@
+# PRODUCCIÓN (y ambientes con la imagen de producción, como desarrollo en SRV-CONTENEDOR o QA).
+#   docker compose -f docker-compose.prod.yml up -d --no-build  (usa la imagen ya publicada)
+#   docker compose -f docker-compose.prod.yml up -d --build     (la construye desde el código, ej. para probar en local)
+#
+# Variables que lee Compose (de la shell o del .env junto a este archivo):
+#   IMAGE                  imagen a correr, ej. ghcr.io/luisolavubo/api-auth:1.1.0  (por defecto api-auth:prod)
+#   ENV_FILE               configuración de Laravel del ambiente                (por defecto .env.prod, fuera de git)
+#   DOCKER_HTTP_PORT_PROD  puerto publicado por nginx                           (por defecto 80)
+# En el servidor solo hacen falta este archivo, nginx/default.conf, el .env, el ENV_FILE y las llaves
+# de Passport (storage/oauth-*.key, chmod 600): el código va en la imagen.
+# HTTPS se termina en el proxy o balanceador que esté delante de este nginx.
+name: api-auth-prod
+
+# Rotación de logs: sin esto los logs de Docker crecen sin límite
+x-logging: &logging
+    driver: json-file
+    options:
+        max-size: "10m"
+        max-file: "5"
+
+services:
+    app:
+        container_name: api-auth-prod
+        image: ${IMAGE:-api-auth:prod}
+        build:
+            context: .
+            dockerfile: Dockerfile.prod
+        env_file:
+            - ${ENV_FILE:-.env.prod}
+        environment:
+            APP_ENV: production
+            APP_DEBUG: "false"
+            LOG_CHANNEL: stderr
+            RUN_MIGRATIONS: "false"
+        volumes:
+            - ./storage/oauth-private.key:/run/keys/oauth-private.key:ro
+            - ./storage/oauth-public.key:/run/keys/oauth-public.key:ro
+        expose:
+            - "9000"
+        restart: unless-stopped
+        # PHP-FPM aceptando conexiones en su puerto
+        healthcheck:
+            test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 30s
+        logging: *logging
+
+    nginx:
+        container_name: api-auth-nginx-prod
+        image: nginx:1.27-alpine
+        ports:
+            - "${DOCKER_HTTP_PORT_PROD:-80}:80"
+        volumes:
+            - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+        depends_on:
+            app:
+                condition: service_healthy
+        restart: unless-stopped
+        # Salud de punta a punta: nginx → PHP-FPM → Laravel (la clave pública no consulta la base)
+        healthcheck:
+            test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/api/v1/auth/public-key"]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 30s
+        logging: *logging
