@@ -15,6 +15,23 @@ info:
 
     **Scopes:** viven en la base de datos y se asignan por rol. Pedir un scope que el rol no tiene responde
     `400 invalid_scope`.
+
+    **Errores:** las rutas `/api/v1/auth/*` responden los errores en RFC 9457 (`application/problem+json`)
+    con un código estable en `error`, como las demás APIs de la UBO:
+
+    | `error` | Estado | Cuándo |
+    |---|---|---|
+    | `invalid_grant` | 401 | Login o refresh con credenciales o refresh token inválidos |
+    | `invalid_scope`, `invalid_request` | 400 | Login o refresh con un scope o una solicitud OAuth inválidos |
+    | `NO_AUTENTICADO` | 401 | Falta el token, o es inválido, vencido o revocado |
+    | `SCOPE_INSUFICIENTE` | 403 | El token no tiene el scope que exige la ruta |
+    | `VALIDACION` | 422 | Datos inválidos; los mensajes por campo van en `errores` |
+    | `LIMITE_EXCEDIDO` | 429 | Rate limit superado; `Retry-After` indica cuándo reintentar |
+    | `RUTA_NO_ENCONTRADA` / `METODO_NO_PERMITIDO` | 404 / 405 | La ruta o el método no existen |
+    | `ERROR_INTERNO` | 500 | Error inesperado; el detalle queda solo en el log |
+
+    `POST /oauth/token` es el endpoint estándar de Passport y mantiene el formato OAuth2
+    (`{error, error_description}`).
   license:
     name: Uso interno
     identifier: LicenseRef-uso-interno
@@ -58,6 +75,7 @@ paths:
                   - $ref: '#/components/schemas/ParTokens'
         '422': { $ref: '#/components/responses/Validacion' }
         '429': { $ref: '#/components/responses/LimiteExcedido' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
 
   /api/v1/auth/login:
     post:
@@ -83,6 +101,7 @@ paths:
         '401': { $ref: '#/components/responses/CredencialesInvalidas' }
         '422': { $ref: '#/components/responses/Validacion' }
         '429': { $ref: '#/components/responses/LimiteExcedido' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
 
   /api/v1/auth/refresh:
     post:
@@ -114,6 +133,7 @@ paths:
         '401': { $ref: '#/components/responses/CredencialesInvalidas' }
         '422': { $ref: '#/components/responses/Validacion' }
         '429': { $ref: '#/components/responses/LimiteExcedido' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
 
   /api/v1/auth/me:
     get:
@@ -174,6 +194,9 @@ paths:
         Valida un token (firma, vencimiento y revocación) al estilo RFC 7662. Quien llama se autentica con
         un token de cliente (`client_credentials`) que tenga el scope `introspect`. Un token inválido,
         vencido o revocado responde `200` con `{"active": false}`.
+
+        Los errores son de quien llama, no del token consultado: `401` si su propio token no sirve (UBO.Common
+        lo renueva y reintenta una vez), `403` si le falta `introspect` y `422` si falta `token`.
       operationId: introspeccion
       security:
         - tokenServicio: [introspect]
@@ -387,14 +410,40 @@ components:
       properties:
         message: { type: string }
 
-    ErrorOAuth:
+    Problema:
       type: object
-      required: [error, message]
+      description: Error en formato RFC 9457 (`application/problem+json`).
+      required: [type, title, status, detail, error]
       properties:
+        type: { type: string, const: about:blank }
+        title:
+          type: string
+          description: Resumen legible del problema.
+        status:
+          type: integer
+          description: Código HTTP de la respuesta.
+        detail:
+          type: string
+          description: Explicación de este caso en particular.
         error:
           type: string
-          examples: [invalid_scope]
-        message: { type: string }
+          description: |
+            Código estable para el programa que llama (ver la descripción de la API). Los fallos de login y
+            refresh conservan su código OAuth.
+
+    ProblemaValidacion:
+      allOf:
+        - $ref: '#/components/schemas/Problema'
+        - type: object
+          required: [errores]
+          properties:
+            error: { const: VALIDACION }
+            errores:
+              type: object
+              description: Mensajes de error por campo.
+              additionalProperties:
+                type: array
+                items: { type: string }
 
     ErrorPassport:
       type: object
@@ -405,46 +454,75 @@ components:
         message: { type: string }
         hint: { type: string }
 
-    ErrorValidacion:
-      type: object
-      required: [message, errors]
-      properties:
-        message: { type: string }
-        errors:
-          type: object
-          additionalProperties:
-            type: array
-            items: { type: string }
-
   responses:
     ErrorOAuth:
-      description: Solicitud OAuth inválida (por ejemplo `invalid_scope`).
+      description: Solicitud OAuth inválida (`invalid_scope`, `invalid_request`).
       content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ErrorOAuth' }
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+          example:
+            type: about:blank
+            title: Scope inválido
+            status: 400
+            detail: Check the `introspect` scope
+            error: invalid_scope
     CredencialesInvalidas:
       description: Credenciales o refresh token inválidos (`invalid_grant`).
       content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ErrorOAuth' }
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+          example:
+            type: about:blank
+            title: Credenciales inválidas
+            status: 401
+            detail: The user credentials were incorrect.
+            error: invalid_grant
     NoAutenticado:
-      description: Falta el token o no es válido.
+      description: Falta el token o no es válido, está vencido o revocado (`NO_AUTENTICADO`).
       content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Mensaje' }
-          example: { message: Unauthenticated. }
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+          example:
+            type: about:blank
+            title: No autenticado
+            status: 401
+            detail: Se requiere un token de acceso válido, vigente y no revocado.
+            error: NO_AUTENTICADO
     ScopeFaltante:
-      description: El token no tiene el scope requerido.
+      description: El token no tiene el scope requerido (`SCOPE_INSUFICIENTE`).
       content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Mensaje' }
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+          example:
+            type: about:blank
+            title: Scope insuficiente
+            status: 403
+            detail: 'El token no tiene el scope requerido: user:read.'
+            error: SCOPE_INSUFICIENTE
     Validacion:
-      description: Datos inválidos.
+      description: Datos inválidos (`VALIDACION`), con los mensajes por campo en `errores`.
       content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ErrorValidacion' }
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemaValidacion' }
+          example:
+            type: about:blank
+            title: Datos inválidos
+            status: 422
+            detail: Los datos enviados no son válidos.
+            error: VALIDACION
+            errores:
+              email: [The email field is required.]
     LimiteExcedido:
-      description: Se superó el rate limit (10 por minuto por email + IP).
+      description: Se superó el rate limit de 10 por minuto por email + IP (`LIMITE_EXCEDIDO`).
+      headers:
+        Retry-After:
+          description: Segundos que hay que esperar antes de reintentar.
+          schema: { type: integer }
       content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Mensaje' }
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+    ErrorInterno:
+      description: Error inesperado (`ERROR_INTERNO`). Nunca incluye el detalle interno.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }

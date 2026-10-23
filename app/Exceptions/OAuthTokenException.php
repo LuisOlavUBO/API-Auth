@@ -2,10 +2,13 @@
 
 namespace App\Exceptions;
 
-use Illuminate\Http\JsonResponse;
 use League\OAuth2\Server\Exception\OAuthServerException;
 use RuntimeException;
 
+/**
+ * A login or refresh rejected by the OAuth2 server. ProblemRenderer answers it
+ * as problem+json with the OAuth error code in "error".
+ */
 class OAuthTokenException extends RuntimeException
 {
     public function __construct(
@@ -30,13 +33,5 @@ class OAuthTokenException extends RuntimeException
         }
 
         return new static($e->getErrorType(), $e->getHint() ?: $e->getMessage(), $status);
-    }
-
-    public function render(): JsonResponse
-    {
-        return response()->json([
-            'error' => $this->errorType,
-            'message' => $this->getMessage(),
-        ], $this->status);
     }
 }

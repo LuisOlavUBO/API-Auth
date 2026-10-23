@@ -79,7 +79,7 @@ class AuthTest extends TestCase
     {
         $this->postJson('/api/v1/auth/register', ['email' => 'not-an-email'])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['name', 'email', 'password']);
+            ->assertJsonValidationErrors(['name', 'email', 'password'], 'errores');
     }
 
     public function test_user_can_login_and_fetch_profile(): void

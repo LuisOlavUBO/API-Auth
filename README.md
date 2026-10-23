@@ -110,6 +110,37 @@ Además Passport expone `POST /oauth/token` (estándar OAuth2), usado por los mi
 
 Los endpoints públicos de `register`/`login`/`refresh` tienen rate limit de 10 req/min por email+IP.
 
+### Errores (RFC 9457)
+
+Las rutas `/api/v1/*` responden los errores como `application/problem+json`, igual que las demás APIs de la UBO ([ProblemRenderer.php](app/Exceptions/ProblemRenderer.php)):
+
+```json
+{
+  "type": "about:blank",
+  "title": "Credenciales inválidas",
+  "status": 401,
+  "detail": "The user credentials were incorrect.",
+  "error": "invalid_grant"
+}
+```
+
+`error` es el código estable para programar contra él:
+
+| `error` | Estado | Cuándo |
+|---|---|---|
+| `invalid_grant` | 401 | Login o refresh con credenciales o refresh token inválidos |
+| `invalid_scope` / `invalid_request` | 400 | Login o refresh con un scope o una solicitud OAuth inválidos |
+| `NO_AUTENTICADO` | 401 | Falta el token, o es inválido, vencido o revocado |
+| `SCOPE_INSUFICIENTE` | 403 | El token no tiene el scope que exige la ruta |
+| `VALIDACION` | 422 | Datos inválidos; los mensajes por campo van en `errores` |
+| `LIMITE_EXCEDIDO` | 429 | Rate limit superado; `Retry-After` indica cuándo reintentar |
+| `RUTA_NO_ENCONTRADA` / `METODO_NO_PERMITIDO` | 404 / 405 | La ruta o el método no existen |
+| `ERROR_INTERNO` | 500 | Error inesperado; el detalle queda solo en el log |
+
+Los fallos de login y refresh conservan su código OAuth en `error`, como antes. Lo que cambió para quien consume: el texto pasa de `message` a `detail`, y los errores de validación de `errors` a `errores`.
+
+`POST /oauth/token` **no cambia**: lo atiende Passport con el formato OAuth2 (`{error, error_description, hint}`), que esperan los clientes OAuth y `HttpServiceTokenProvider` de UBO.Common. La introspección mantiene su `200` (`active` true/false) y sus estados de error: `IntrospectionValidator` de UBO.Common solo mira el estado (con `401` renueva su token y reintenta).
+
 ### Ejemplo
 
 ```bash
@@ -289,4 +320,5 @@ php artisan test
 - [app/Http/Controllers/Auth/TokenIntrospectionController.php](app/Http/Controllers/Auth/TokenIntrospectionController.php) — introspección y clave pública.
 - [app/Providers/AppServiceProvider.php](app/Providers/AppServiceProvider.php) — grants, TTL, rate limiting y binding del ScopeRepository.
 - [app/Services/ScopeRepository.php](app/Services/ScopeRepository.php) — catálogo de scopes en BD y filtrado por rol.
+- [app/Exceptions/ProblemRenderer.php](app/Exceptions/ProblemRenderer.php) — errores RFC 9457 de `/api/*`.
 - [routes/api.php](routes/api.php) — rutas.
