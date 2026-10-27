@@ -65,7 +65,7 @@ services:
         restart: unless-stopped
         # Salud de punta a punta: nginx → PHP-FPM → base de datos
         healthcheck:
-            test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/api/v1/salud"]
+            test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/api/auth/v1/salud"]
             interval: 30s
             timeout: 5s
             retries: 3

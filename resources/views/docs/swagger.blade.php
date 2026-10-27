@@ -18,7 +18,7 @@
     <script>
         window.ui = SwaggerUIBundle({
             // Relative so it keeps working behind a proxy that terminates HTTPS.
-            url: '/docs/openapi.yaml',
+            url: '/{{ \App\Http\ApiPrefix::BASE }}/docs/openapi.yaml',
             dom_id: '#swagger-ui',
             deepLinking: true,
             persistAuthorization: true,

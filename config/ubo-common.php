@@ -12,7 +12,7 @@ return [
     | keeps its own configuration file (config/ubo-<module>.php).
     |
     | API-Auth uses Tracing, Problems (RFC 9457 errors of api/*), Health
-    | (/api/v1/salud) and SqlServer (SET DATEFORMAT ymd on every sqlsrv
+    | (/api/auth/v1/salud) and SqlServer (SET DATEFORMAT ymd on every sqlsrv
     | connection). It issues the tokens and validates them with Passport, so
     | it must not validate them against itself through the Auth module, and it
     | does not call other UBO APIs (ApiClient). Both are off unless the

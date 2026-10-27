@@ -7,7 +7,7 @@ return [
     | Password Grant Client
     |--------------------------------------------------------------------------
     |
-    | Client used internally by the /api/v1/auth endpoints (register, login,
+    | Client used internally by the /api/auth/v1 endpoints (register, login,
     | refresh) to issue tokens through Passport's password grant. Create it
     | with "php artisan passport:client --password" and copy the values here.
     |

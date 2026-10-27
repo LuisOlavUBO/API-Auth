@@ -41,7 +41,7 @@ class AuthTest extends TestCase
      */
     protected function login(?string $scope = null): array
     {
-        return $this->postJson('/api/v1/auth/login', array_filter([
+        return $this->postJson('/api/auth/v1/login', array_filter([
             'email' => 'ana@example.com',
             'password' => 'secret-password',
             'scope' => $scope,
@@ -62,7 +62,7 @@ class AuthTest extends TestCase
 
     public function test_user_can_register_and_receives_tokens(): void
     {
-        $this->postJson('/api/v1/auth/register', [
+        $this->postJson('/api/auth/v1/register', [
             'name' => 'Ana',
             'email' => 'ana@example.com',
             'password' => 'secret-password',
@@ -77,7 +77,7 @@ class AuthTest extends TestCase
 
     public function test_register_validates_input(): void
     {
-        $this->postJson('/api/v1/auth/register', ['email' => 'not-an-email'])
+        $this->postJson('/api/auth/v1/register', ['email' => 'not-an-email'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['name', 'email', 'password'], 'errores');
     }
@@ -89,7 +89,7 @@ class AuthTest extends TestCase
         $token = $this->login();
 
         $this->withToken($token['access_token'])
-            ->getJson('/api/v1/auth/me')
+            ->getJson('/api/auth/v1/me')
             ->assertOk()
             ->assertJsonPath('email', 'ana@example.com')
             ->assertJsonMissingPath('password');
@@ -99,7 +99,7 @@ class AuthTest extends TestCase
     {
         $this->createUser();
 
-        $this->postJson('/api/v1/auth/login', [
+        $this->postJson('/api/auth/v1/login', [
             'email' => 'ana@example.com',
             'password' => 'wrong-password',
         ])->assertUnauthorized()->assertJsonPath('error', 'invalid_grant');
@@ -107,7 +107,7 @@ class AuthTest extends TestCase
 
     public function test_me_requires_a_token(): void
     {
-        $this->getJson('/api/v1/auth/me')->assertUnauthorized();
+        $this->getJson('/api/auth/v1/me')->assertUnauthorized();
     }
 
     public function test_refresh_token_issues_a_new_pair(): void
@@ -115,14 +115,14 @@ class AuthTest extends TestCase
         $this->createUser();
         $first = $this->login();
 
-        $second = $this->postJson('/api/v1/auth/refresh', ['refresh_token' => $first['refresh_token']])
+        $second = $this->postJson('/api/auth/v1/refresh', ['refresh_token' => $first['refresh_token']])
             ->assertOk()
             ->json();
 
         $this->assertNotSame($first['access_token'], $second['access_token']);
 
         // The old refresh token is single-use.
-        $this->postJson('/api/v1/auth/refresh', ['refresh_token' => $first['refresh_token']])
+        $this->postJson('/api/auth/v1/refresh', ['refresh_token' => $first['refresh_token']])
             ->assertUnauthorized();
     }
 
@@ -131,12 +131,12 @@ class AuthTest extends TestCase
         $this->createUser();
         $token = $this->login();
 
-        $this->withToken($token['access_token'])->postJson('/api/v1/auth/logout')->assertOk();
+        $this->withToken($token['access_token'])->postJson('/api/auth/v1/logout')->assertOk();
 
         $this->assertDatabaseMissing('oauth_access_tokens', ['revoked' => false]);
         $this->assertDatabaseMissing('oauth_refresh_tokens', ['revoked' => false]);
 
-        $this->postJson('/api/v1/auth/refresh', ['refresh_token' => $token['refresh_token']])
+        $this->postJson('/api/auth/v1/refresh', ['refresh_token' => $token['refresh_token']])
             ->assertUnauthorized();
     }
 
@@ -146,7 +146,7 @@ class AuthTest extends TestCase
         $first = $this->login();
         $this->login();
 
-        $this->withToken($first['access_token'])->postJson('/api/v1/auth/logout-all')->assertOk();
+        $this->withToken($first['access_token'])->postJson('/api/auth/v1/logout-all')->assertOk();
 
         $this->assertDatabaseCount('oauth_access_tokens', 2);
         $this->assertDatabaseMissing('oauth_access_tokens', ['revoked' => false]);
@@ -154,7 +154,7 @@ class AuthTest extends TestCase
 
     public function test_registered_users_get_the_default_role(): void
     {
-        $this->postJson('/api/v1/auth/register', [
+        $this->postJson('/api/auth/v1/register', [
             'name' => 'Ana',
             'email' => 'ana@example.com',
             'password' => 'secret-password',
@@ -185,7 +185,7 @@ class AuthTest extends TestCase
         $this->createUser();
 
         foreach (['introspect', '*', 'does-not-exist'] as $scope) {
-            $this->postJson('/api/v1/auth/login', [
+            $this->postJson('/api/auth/v1/login', [
                 'email' => 'ana@example.com',
                 'password' => 'secret-password',
                 'scope' => $scope,
@@ -201,7 +201,7 @@ class AuthTest extends TestCase
 
         $this->assertSame([], $this->scopesOf($token['access_token']));
 
-        $this->withToken($token['access_token'])->getJson('/api/v1/auth/me')->assertForbidden();
+        $this->withToken($token['access_token'])->getJson('/api/auth/v1/me')->assertForbidden();
     }
 
     public function test_me_requires_the_user_read_scope(): void
@@ -210,7 +210,7 @@ class AuthTest extends TestCase
 
         $token = $this->login('user:write');
 
-        $this->withToken($token['access_token'])->getJson('/api/v1/auth/me')->assertForbidden();
+        $this->withToken($token['access_token'])->getJson('/api/auth/v1/me')->assertForbidden();
     }
 
     public function test_refresh_drops_scopes_the_role_no_longer_has(): void
@@ -222,7 +222,7 @@ class AuthTest extends TestCase
             OAuthScope::firstWhere('name', 'user:write')
         );
 
-        $refreshed = $this->postJson('/api/v1/auth/refresh', ['refresh_token' => $token['refresh_token']])
+        $refreshed = $this->postJson('/api/auth/v1/refresh', ['refresh_token' => $token['refresh_token']])
             ->assertOk()
             ->json();
 

@@ -32,7 +32,7 @@ class TokenIntrospectionTest extends TestCase
 
         User::factory()->for(Role::firstWhere('name', 'user'))->create(['email' => 'ana@example.com', 'password' => 'secret-password']);
 
-        $this->userToken = $this->postJson('/api/v1/auth/login', [
+        $this->userToken = $this->postJson('/api/auth/v1/login', [
             'email' => 'ana@example.com',
             'password' => 'secret-password',
         ])->json('access_token');
@@ -44,7 +44,7 @@ class TokenIntrospectionTest extends TestCase
 
         Role::factory()->withScopes([$scope])->create()->clients()->attach($client->getKey());
 
-        return $this->postJson('/oauth/token', [
+        return $this->postJson('/api/auth/oauth/token', [
             'grant_type' => 'client_credentials',
             'client_id' => $client->getKey(),
             'client_secret' => $client->plainSecret,
@@ -55,7 +55,7 @@ class TokenIntrospectionTest extends TestCase
     public function test_service_can_introspect_an_active_user_token(): void
     {
         $this->withToken($this->serviceToken())
-            ->postJson('/api/v1/auth/introspect', ['token' => $this->userToken])
+            ->postJson('/api/auth/v1/introspect', ['token' => $this->userToken])
             ->assertOk()
             ->assertJsonPath('active', true)
             ->assertJsonPath('user.email', 'ana@example.com')
@@ -67,7 +67,7 @@ class TokenIntrospectionTest extends TestCase
         $serviceToken = $this->serviceToken();
 
         $this->withToken($serviceToken)
-            ->postJson('/api/v1/auth/introspect', ['token' => $serviceToken])
+            ->postJson('/api/auth/v1/introspect', ['token' => $serviceToken])
             ->assertOk()
             ->assertJsonPath('active', true)
             ->assertJsonPath('sub', null)
@@ -83,7 +83,7 @@ class TokenIntrospectionTest extends TestCase
         $client = app(ClientRepository::class)->createClientCredentialsGrantClient('Sistema X');
         Role::factory()->withScopes(['geografia:leer'])->create()->clients()->attach($client->getKey());
 
-        $apiToken = $this->postJson('/oauth/token', [
+        $apiToken = $this->postJson('/api/auth/oauth/token', [
             'grant_type' => 'client_credentials',
             'client_id' => $client->getKey(),
             'client_secret' => $client->plainSecret,
@@ -91,7 +91,7 @@ class TokenIntrospectionTest extends TestCase
         ])->assertOk()->json('access_token');
 
         $this->withToken($this->serviceToken())
-            ->postJson('/api/v1/auth/introspect', ['token' => $apiToken])
+            ->postJson('/api/auth/v1/introspect', ['token' => $apiToken])
             ->assertOk()
             ->assertJsonPath('active', true)
             ->assertJsonPath('aud', [$client->fresh()->getKey(), 'api-maestros'])
@@ -102,38 +102,38 @@ class TokenIntrospectionTest extends TestCase
     {
         $serviceToken = $this->serviceToken();
 
-        $this->withToken($this->userToken)->postJson('/api/v1/auth/logout')->assertOk();
+        $this->withToken($this->userToken)->postJson('/api/auth/v1/logout')->assertOk();
 
         // Guards are cached across requests inside one test; reset like a new HTTP request would.
         $this->app['auth']->forgetGuards();
 
         $this->withToken($serviceToken)
-            ->postJson('/api/v1/auth/introspect', ['token' => $this->userToken])
+            ->postJson('/api/auth/v1/introspect', ['token' => $this->userToken])
             ->assertOk()
             ->assertExactJson(['active' => false]);
 
         $this->withToken($serviceToken)
-            ->postJson('/api/v1/auth/introspect', ['token' => 'garbage'])
+            ->postJson('/api/auth/v1/introspect', ['token' => 'garbage'])
             ->assertExactJson(['active' => false]);
     }
 
     public function test_introspection_requires_the_introspect_scope(): void
     {
         $this->withToken($this->serviceToken('user:read'))
-            ->postJson('/api/v1/auth/introspect', ['token' => $this->userToken])
+            ->postJson('/api/auth/v1/introspect', ['token' => $this->userToken])
             ->assertForbidden();
     }
 
     public function test_user_tokens_cannot_call_introspection(): void
     {
         $this->withToken($this->userToken)
-            ->postJson('/api/v1/auth/introspect', ['token' => $this->userToken])
+            ->postJson('/api/auth/v1/introspect', ['token' => $this->userToken])
             ->assertUnauthorized();
     }
 
     public function test_public_key_is_exposed(): void
     {
-        $this->get('/api/v1/auth/public-key')
+        $this->get('/api/auth/v1/public-key')
             ->assertOk()
             ->assertSee('BEGIN PUBLIC KEY');
     }

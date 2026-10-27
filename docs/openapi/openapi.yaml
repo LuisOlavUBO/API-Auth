@@ -8,7 +8,7 @@ info:
     **Usuarios finales:** registro, login, refresh, perfil y logout con el password grant. El secreto del
     cliente nunca sale del servidor: estos endpoints lo usan internamente.
 
-    **Otros microservicios:** piden su token a `POST /oauth/token` con `client_credentials`. Lo recomendado
+    **Otros microservicios:** piden su token a `POST /api/auth/oauth/token` con `client_credentials`. Lo recomendado
     es pedir un token **por API** con el parámetro `api`: el token nombra la API en su `aud`
     (`["<client id>", "api-maestros"]`) y solo sirve en esa API. Para validar el token de un usuario
     pueden usar `/introspect` (detecta revocaciones) o verificar la firma localmente con `/public-key`.
@@ -16,7 +16,7 @@ info:
     **Scopes:** viven en la base de datos y se asignan por rol. Pedir un scope que el rol no tiene responde
     `400 invalid_scope`.
 
-    **Errores:** las rutas `/api/v1/auth/*` responden los errores en RFC 9457 (`application/problem+json`)
+    **Errores:** las rutas `/api/auth/v1/*` responden los errores en RFC 9457 (`application/problem+json`)
     con un código estable en `error`, como las demás APIs de la UBO:
 
     | `error` | Estado | Cuándo |
@@ -30,7 +30,7 @@ info:
     | `RUTA_NO_ENCONTRADA` / `METODO_NO_PERMITIDO` | 404 / 405 | La ruta o el método no existen |
     | `ERROR_INTERNO` | 500 | Error inesperado; el detalle queda solo en el log |
 
-    `POST /oauth/token` es el endpoint estándar de Passport y mantiene el formato OAuth2
+    `POST /api/auth/oauth/token` es el endpoint estándar de Passport y mantiene el formato OAuth2
     (`{error, error_description}`).
 
     Toda respuesta trae el header `X-Trace-Id` con el `trace_id` de la petición (UBO.Common, módulo Tracing).
@@ -51,7 +51,7 @@ tags:
     description: Estado del servicio.
 
 paths:
-  /api/v1/auth/register:
+  /api/auth/v1/register:
     post:
       tags: [Usuarios]
       summary: Registrar un usuario
@@ -79,7 +79,7 @@ paths:
         '429': { $ref: '#/components/responses/LimiteExcedido' }
         '500': { $ref: '#/components/responses/ErrorInterno' }
 
-  /api/v1/auth/login:
+  /api/auth/v1/login:
     post:
       tags: [Usuarios]
       summary: Iniciar sesión
@@ -105,7 +105,7 @@ paths:
         '429': { $ref: '#/components/responses/LimiteExcedido' }
         '500': { $ref: '#/components/responses/ErrorInterno' }
 
-  /api/v1/auth/refresh:
+  /api/auth/v1/refresh:
     post:
       tags: [Usuarios]
       summary: Renovar tokens
@@ -137,7 +137,7 @@ paths:
         '429': { $ref: '#/components/responses/LimiteExcedido' }
         '500': { $ref: '#/components/responses/ErrorInterno' }
 
-  /api/v1/auth/me:
+  /api/auth/v1/me:
     get:
       tags: [Usuarios]
       summary: Perfil del usuario
@@ -154,7 +154,7 @@ paths:
         '401': { $ref: '#/components/responses/NoAutenticado' }
         '403': { $ref: '#/components/responses/ScopeFaltante' }
 
-  /api/v1/auth/logout:
+  /api/auth/v1/logout:
     post:
       tags: [Usuarios]
       summary: Cerrar la sesión actual
@@ -171,7 +171,7 @@ paths:
               example: { message: Session closed. }
         '401': { $ref: '#/components/responses/NoAutenticado' }
 
-  /api/v1/auth/logout-all:
+  /api/auth/v1/logout-all:
     post:
       tags: [Usuarios]
       summary: Cerrar todas las sesiones
@@ -188,7 +188,7 @@ paths:
               example: { message: All sessions closed. }
         '401': { $ref: '#/components/responses/NoAutenticado' }
 
-  /api/v1/auth/introspect:
+  /api/auth/v1/introspect:
     post:
       tags: [Servicios]
       summary: Introspección de un token
@@ -226,7 +226,7 @@ paths:
         '403': { $ref: '#/components/responses/ScopeFaltante' }
         '422': { $ref: '#/components/responses/Validacion' }
 
-  /api/v1/auth/public-key:
+  /api/auth/v1/public-key:
     get:
       tags: [Servicios]
       summary: Clave pública
@@ -244,7 +244,7 @@ paths:
                 MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA...
                 -----END PUBLIC KEY-----
 
-  /oauth/token:
+  /api/auth/oauth/token:
     post:
       tags: [Servicios]
       summary: Token de cliente (client_credentials)
@@ -306,13 +306,13 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorPassport' }
 
-  /api/v1/salud:
+  /api/auth/v1/salud:
     get:
       tags: [Salud]
       summary: Estado de la API y de la base de datos
       description: |
         Ejecuta una consulta trivial en la base de datos. Lo usa el healthcheck de nginx en
-        `docker-compose.prod.yml`. Misma ruta y forma que en las demás APIs de la UBO.
+        `docker-compose.prod.yml`. Misma forma que en las demás APIs de la UBO, bajo el prefijo de cada una.
       operationId: salud
       security: []
       responses:
@@ -356,13 +356,13 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Access token de usuario obtenido con `/api/v1/auth/login`.
+      description: Access token de usuario obtenido con `/api/auth/v1/login`.
     tokenServicio:
       type: oauth2
       description: Token de cliente obtenido con `client_credentials`.
       flows:
         clientCredentials:
-          tokenUrl: /oauth/token
+          tokenUrl: /api/auth/oauth/token
           scopes:
             introspect: Validar tokens de otros servicios.
 

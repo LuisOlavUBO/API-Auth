@@ -1,14 +1,9 @@
 <?php
 
+use App\Http\ApiPrefix;
 use Illuminate\Support\Facades\Route;
 
-// This is an API: the root leads to the docs instead of Laravel's welcome page.
-Route::redirect('/', '/docs/swagger');
-
-Route::view('docs/swagger', 'docs.swagger');
-
-Route::get('docs/openapi.yaml', function () {
-    return response()->file(base_path('docs/openapi/openapi.yaml'), [
-        'Content-Type' => 'application/yaml; charset=UTF-8',
-    ]);
-});
+// This is an API: the root leads to the docs. They live under the API prefix so that
+// ubo-nginx-proxy routes them to this container; these shortcuts are for direct access.
+Route::redirect('/', '/'.ApiPrefix::BASE.'/docs/swagger');
+Route::redirect('docs/swagger', '/'.ApiPrefix::BASE.'/docs/swagger');

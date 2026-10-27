@@ -4,7 +4,8 @@ Servicio OAuth2 que emite y valida tokens JWT para el resto de microservicios.
 
 - **Usuarios finales**: registro, login, refresh, perfil y logout (password grant, el secreto del cliente nunca sale del servidor).
 - **Otros microservicios**: se autentican con *client credentials* y validan tokens de usuario vía `/introspect`, o localmente con la clave pública.
-- **Documentación**: Swagger UI en `/docs/swagger` (la raíz `/` redirige ahí). El contrato está en [`docs/openapi/openapi.yaml`](docs/openapi/openapi.yaml) y se sirve en `/docs/openapi.yaml`; un test verifica que documente todas las rutas `/api`.
+- **Rutas**: todas bajo `/api/auth` ([ApiPrefix.php](app/Http/ApiPrefix.php)): `/api/auth/v1/...` y `POST /api/auth/oauth/token`.
+- **Documentación**: Swagger UI en `/api/auth/docs/swagger` (`/` y `/docs/swagger` redirigen ahí). El contrato está en [`docs/openapi/openapi.yaml`](docs/openapi/openapi.yaml) y se sirve en `/api/auth/docs/openapi.yaml`; un test verifica que documente todas las rutas `/api`.
 - **Estándar UBO**: errores RFC 9457, tracing con [`ubo/common`](https://github.com/LuisOlavUBO/UBO-Common) y tests contra SQL Server, como [API-Maestros](../API-Maestros).
 
 ## Instalación
@@ -65,13 +66,13 @@ docker compose up -d --build
 
 ### Despliegue
 
-`docker-compose.prod.yml` levanta `app` (imagen de `Dockerfile.prod`) y `nginx`. El healthcheck de nginx llama a `/api/v1/salud`, que consulta la base, así que el estado `healthy` cubre nginx → PHP-FPM → SQL Server. La imagen no incluye dependencias de desarrollo, `.env` ni llaves; `ubo/common` se descarga de GitHub como cualquier otra dependencia, sin credenciales. Al arrancar, el entrypoint valida las variables críticas, carga las llaves y ejecuta `php artisan optimize`. Con `RUN_MIGRATIONS=true` también corre las migraciones.
+`docker-compose.prod.yml` levanta `app` (imagen de `Dockerfile.prod`) y `nginx`. El healthcheck de nginx llama a `/api/auth/v1/salud`, que consulta la base, así que el estado `healthy` cubre nginx → PHP-FPM → SQL Server. La imagen no incluye dependencias de desarrollo, `.env` ni llaves; `ubo/common` se descarga de GitHub como cualquier otra dependencia, sin credenciales. Al arrancar, el entrypoint valida las variables críticas, carga las llaves y ejecuta `php artisan optimize`. Con `RUN_MIGRATIONS=true` también corre las migraciones.
 
 Construir y publicar, en el PC:
 
 ```bash
-IMAGE=ghcr.io/luisolavubo/api-auth:2.0.0 docker compose -f docker-compose.prod.yml build app
-docker push ghcr.io/luisolavubo/api-auth:2.0.0
+IMAGE=ghcr.io/luisolavubo/api-auth:3.0.0 docker compose -f docker-compose.prod.yml build app
+docker push ghcr.io/luisolavubo/api-auth:3.0.0
 ```
 
 En el servidor, `~/projects/api-auth` contiene solo:
@@ -94,7 +95,9 @@ docker compose -f docker-compose.prod.yml up -d --no-build
 
 El compose fuerza `APP_ENV=production`, `APP_DEBUG=false` y `LOG_CHANNEL=stderr` (logs con `docker compose -f docker-compose.prod.yml logs app`). HTTPS se termina en el proxy inverso que esté delante del nginx.
 
-## Endpoints (`/api/v1/auth`)
+**Proxy inverso:** `apidev.ubo.cl` es compartido por varias APIs. `ubo-nginx-proxy` elige el contenedor por el segmento que sigue a `/api` (`/api/auth/...` → `api-auth-nginx-prod`, por la red externa `proxy`) y pasa la ruta sin reescribirla, así que la URL interna y la externa son iguales: `http://192.168.51.220:4203/api/auth/v1/salud` y `https://apidev.ubo.cl/api/auth/v1/salud`. La imagen 3.0.0 cambió todas las URLs de la 2.x (`/api/v1/auth/*` → `/api/auth/v1/*`, `/oauth/token` → `/api/auth/oauth/token`) y no mantiene las antiguas: los consumidores necesitan una versión de UBO.Common con las rutas nuevas.
+
+## Endpoints (`/api/auth/v1`)
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
@@ -107,13 +110,13 @@ El compose fuerza `APP_ENV=production`, `APP_DEBUG=false` y `LOG_CHANNEL=stderr`
 | POST | `/introspect` | Bearer (cliente, scope `introspect`) | `token` → `{ active, sub, client_id, scope, exp, user }` |
 | GET | `/public-key` | — | Clave pública PEM para verificar JWT localmente |
 
-Además Passport expone `POST /oauth/token` (estándar OAuth2), usado por los microservicios para el grant `client_credentials`, y `GET /api/v1/salud` responde `{"estado": "OK", "base_datos": "OK"}` o `503` si la base no responde (misma ruta y forma que en API-Maestros). `/up` solo indica que Laravel arrancó.
+Además `POST /api/auth/oauth/token` es el endpoint estándar OAuth2 de Passport, usado por los microservicios para el grant `client_credentials`. Es la única ruta de Passport registrada: las demás (`/oauth/authorize`, `/oauth/device`, `/oauth/token/refresh`) están apagadas con `Passport::ignoreRoutes()` porque requieren un login web que esta API no tiene. `GET /api/auth/v1/salud` responde `{"estado": "OK", "base_datos": "OK"}` o `503` si la base no responde (misma forma que en API-Maestros). `/up` solo indica que Laravel arrancó.
 
 Los endpoints públicos de `register`/`login`/`refresh` tienen rate limit de 10 req/min por email+IP.
 
 ### Errores (RFC 9457)
 
-Las rutas `/api/v1/*` responden los errores como `application/problem+json`, igual que las demás APIs de la UBO. Los presenta el `ProblemRenderer` del módulo **Problems** de UBO.Common, registrado en [bootstrap/app.php](bootstrap/app.php). Los fallos de login y refresh son una `OAuthTokenException` ([OAuthTokenException.php](app/Exceptions/OAuthTokenException.php)), un error de negocio (`DomainProblem`) de esta API que el renderizador presenta con su código OAuth:
+Las rutas `/api/auth/*` responden los errores como `application/problem+json`, igual que las demás APIs de la UBO. Los presenta el `ProblemRenderer` del módulo **Problems** de UBO.Common, registrado en [bootstrap/app.php](bootstrap/app.php). Los fallos de login y refresh son una `OAuthTokenException` ([OAuthTokenException.php](app/Exceptions/OAuthTokenException.php)), un error de negocio (`DomainProblem`) de esta API que el renderizador presenta con su código OAuth:
 
 ```json
 {
@@ -140,11 +143,11 @@ Las rutas `/api/v1/*` responden los errores como `application/problem+json`, igu
 
 Los fallos de login y refresh conservan su código OAuth en `error`, como antes. Si Passport rechaza el cliente password (`invalid_client`), es un error de configuración del servidor: responde `500` y el motivo queda solo en el log. Los demás fallos (contraseña incorrecta, refresh token vencido o revocado, scope inválido) son esperables y no se registran en el log. Lo que cambió para quien consume: el texto pasa de `message` a `detail`, y los errores de validación de `errors` a `errores`.
 
-`POST /oauth/token` **no cambia**: lo atiende Passport con el formato OAuth2 (`{error, error_description, hint}`), que esperan los clientes OAuth y `HttpServiceTokenProvider` de UBO.Common. La introspección mantiene su `200` (`active` true/false) y sus estados de error: `IntrospectionValidator` de UBO.Common solo mira el estado (con `401` renueva su token y reintenta).
+`POST /api/auth/oauth/token` mantiene el formato OAuth2 (`{error, error_description, hint}`), que esperan los clientes OAuth y `HttpServiceTokenProvider` de UBO.Common: Passport presenta sus propias excepciones antes que el `ProblemRenderer`. Solo los errores que no son de OAuth (ruta o método inexistente, rate limit) salen en RFC 9457. La introspección mantiene su `200` (`active` true/false) y sus estados de error: `IntrospectionValidator` de UBO.Common solo mira el estado (con `401` renueva su token y reintenta).
 
 ### Tracing (UBO.Common)
 
-Esta API usa de [`ubo/common`](https://github.com/LuisOlavUBO/UBO-Common) los módulos **Tracing**, **Problems** (errores de `/api/*`), **Health** (`/api/v1/salud`) y **SqlServer** (`SET DATEFORMAT ymd`), encendidos en [config/ubo-common.php](config/ubo-common.php). Tracing continúa el `traceparent` de quien llama (W3C Trace Context) o empieza una traza, agrega `trace_id`, `span_id` y `parent_span_id` a cada línea de log y devuelve el header `X-Trace-Id`, también en los errores. Así una llamada de API-Maestros a `/oauth/token` o `/introspect` queda con el mismo `trace_id` en los logs de ambas.
+Esta API usa de [`ubo/common`](https://github.com/LuisOlavUBO/UBO-Common) los módulos **Tracing**, **Problems** (errores de `/api/*`), **Health** (`/api/auth/v1/salud`) y **SqlServer** (`SET DATEFORMAT ymd`), encendidos en [config/ubo-common.php](config/ubo-common.php). Tracing continúa el `traceparent` de quien llama (W3C Trace Context) o empieza una traza, agrega `trace_id`, `span_id` y `parent_span_id` a cada línea de log y devuelve el header `X-Trace-Id`, también en los errores. Así una llamada de API-Maestros a `/api/auth/oauth/token` o `/introspect` queda con el mismo `trace_id` en los logs de ambas.
 
 | Variable | Valor | Uso |
 |---|---|---|
@@ -157,11 +160,11 @@ Ambos módulos quedan apagados aunque falten las variables. Para traer una versi
 ### Ejemplo
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/auth/login -H "Accept: application/json" -d "email=ana@example.com&password=secret-password"
+curl -X POST http://localhost:8000/api/auth/v1/login -H "Accept: application/json" -d "email=ana@example.com&password=secret-password"
 ```
 
 ```bash
-curl http://localhost:8000/api/v1/auth/me -H "Accept: application/json" -H "Authorization: Bearer <access_token>"
+curl http://localhost:8000/api/auth/v1/me -H "Accept: application/json" -H "Authorization: Bearer <access_token>"
 ```
 
 ## Integrar otro microservicio
@@ -179,18 +182,18 @@ curl http://localhost:8000/api/v1/auth/me -H "Accept: application/json" -H "Auth
 2. El servicio obtiene su token:
 
    ```bash
-   curl -X POST http://localhost:8000/oauth/token -d "grant_type=client_credentials&client_id=<id>&client_secret=<secret>&scope=introspect"
+   curl -X POST http://localhost:8000/api/auth/oauth/token -d "grant_type=client_credentials&client_id=<id>&client_secret=<secret>&scope=introspect"
    ```
 
    Para llamar a otra API, lo recomendado es pedir un token **por API** con el parámetro `api` (ver [Tokens por API](#tokens-por-api)):
 
    ```bash
-   curl -X POST http://localhost:8000/oauth/token -d "grant_type=client_credentials&client_id=<id>&client_secret=<secret>&api=api-maestros"
+   curl -X POST http://localhost:8000/api/auth/oauth/token -d "grant_type=client_credentials&client_id=<id>&client_secret=<secret>&api=api-maestros"
    ```
 
 3. Para validar el token de un usuario que le llega, tiene dos opciones:
-   - **Introspección** (detecta revocaciones/logout): `POST /api/v1/auth/introspect` con `token=<token del usuario>` y su propio token de cliente como Bearer.
-   - **Verificación local** (sin llamada de red, no detecta revocación hasta que expira): verificar la firma RS256 del JWT con la clave de `/api/v1/auth/public-key` y revisar `exp`.
+   - **Introspección** (detecta revocaciones/logout): `POST /api/auth/v1/introspect` con `token=<token del usuario>` y su propio token de cliente como Bearer.
+   - **Verificación local** (sin llamada de red, no detecta revocación hasta que expira): verificar la firma RS256 del JWT con la clave de `/api/auth/v1/public-key` y revisar `exp`.
 
 ## Scopes y roles
 
@@ -336,5 +339,5 @@ php artisan test
 - [app/Services/AccessToken.php](app/Services/AccessToken.php), [AccessTokenRepository.php](app/Services/AccessTokenRepository.php) y [TokenAudience.php](app/Services/TokenAudience.php) — el `aud` de los tokens por API: `ScopeRepository` valida `api` y lo deja en `TokenAudience`, y el repositorio crea el token con esa API.
 - [bootstrap/app.php](bootstrap/app.php) — errores RFC 9457 de `/api/*` con el `ProblemRenderer` de UBO.Common.
 - [app/Exceptions/OAuthTokenException.php](app/Exceptions/OAuthTokenException.php) — fallos de login y refresh: código OAuth, título y qué se registra en el log.
-- [config/ubo-common.php](config/ubo-common.php) — módulos de UBO.Common: Tracing, Problems, Health (`/api/v1/salud`) y SqlServer.
+- [config/ubo-common.php](config/ubo-common.php) — módulos de UBO.Common: Tracing, Problems, Health (`/api/auth/v1/salud`) y SqlServer.
 - [routes/api.php](routes/api.php) — rutas.
