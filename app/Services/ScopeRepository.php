@@ -44,7 +44,7 @@ class ScopeRepository extends PassportScopeRepository
      * A client credentials request with an "api" parameter gets a token for
      * that API only (see scopesForApi). league/oauth2-server does not pass the
      * request here, so "api" is read from the current HTTP request: client
-     * credentials tokens are only issued by POST /oauth/token.
+     * credentials tokens are only issued by POST /api/auth/oauth/token.
      *
      * @param  ScopeEntityInterface[]  $scopes
      * @return ScopeEntityInterface[]

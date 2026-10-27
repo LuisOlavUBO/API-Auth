@@ -41,7 +41,7 @@ class ClientScopesTest extends TestCase
 
     protected function requestToken(?string $scope, ?string $api = null): TestResponse
     {
-        return $this->postJson('/oauth/token', array_filter([
+        return $this->postJson('/api/auth/oauth/token', array_filter([
             'grant_type' => 'client_credentials',
             'client_id' => $this->client->getKey(),
             'client_secret' => $this->client->plainSecret,

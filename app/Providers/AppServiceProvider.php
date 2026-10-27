@@ -27,6 +27,10 @@ class AppServiceProvider extends ServiceProvider
         // the API and AccessTokenRepository creates the token with it.
         $this->app->singleton(TokenAudience::class);
         $this->app->bind(PassportAccessTokenRepository::class, AccessTokenRepository::class);
+
+        // Only POST /api/auth/oauth/token is used, and routes/api.php registers it under the
+        // API prefix. The rest (authorize, device, token/refresh) need a web login this API lacks.
+        Passport::ignoreRoutes();
     }
 
     /**

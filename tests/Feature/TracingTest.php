@@ -12,7 +12,7 @@ class TracingTest extends TestCase
     public function test_responses_continue_the_callers_trace(): void
     {
         $this->withHeader('traceparent', '00-'.self::TRACE_ID.'-00f067aa0ba902b7-01')
-            ->get('/api/v1/auth/public-key')
+            ->get('/api/auth/v1/public-key')
             ->assertOk()
             ->assertHeader('X-Trace-Id', self::TRACE_ID);
     }
@@ -20,7 +20,7 @@ class TracingTest extends TestCase
     public function test_error_responses_carry_the_trace_id(): void
     {
         $this->withHeader('traceparent', '00-'.self::TRACE_ID.'-00f067aa0ba902b7-01')
-            ->getJson('/api/v1/auth/me')
+            ->getJson('/api/auth/v1/me')
             ->assertUnauthorized()
             ->assertHeader('X-Trace-Id', self::TRACE_ID);
     }

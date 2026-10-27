@@ -51,30 +51,30 @@ class ProblemDetailsTest extends TestCase
 
     public function test_requests_without_a_token_get_a_problem(): void
     {
-        $this->assertProblem($this->getJson('/api/v1/auth/me'), 401, 'NO_AUTENTICADO');
+        $this->assertProblem($this->getJson('/api/auth/v1/me'), 401, 'NO_AUTENTICADO');
     }
 
     public function test_tokens_without_the_required_scope_get_a_problem(): void
     {
-        $token = $this->postJson('/api/v1/auth/login', [
+        $token = $this->postJson('/api/auth/v1/login', [
             'email' => 'ana@example.com',
             'password' => 'secret-password',
             'scope' => 'user:write',
         ])->json('access_token');
 
-        $this->assertProblem($this->withToken($token)->getJson('/api/v1/auth/me'), 403, 'SCOPE_INSUFICIENTE')
+        $this->assertProblem($this->withToken($token)->getJson('/api/auth/v1/me'), 403, 'SCOPE_INSUFICIENTE')
             ->assertJsonPath('detail', 'El token no tiene el scope requerido: user:read.');
     }
 
     public function test_invalid_input_lists_the_errors_per_field(): void
     {
-        $this->assertProblem($this->postJson('/api/v1/auth/login', ['email' => 'not-an-email']), 422, 'VALIDACION')
+        $this->assertProblem($this->postJson('/api/auth/v1/login', ['email' => 'not-an-email']), 422, 'VALIDACION')
             ->assertJsonValidationErrors(['email', 'password'], 'errores');
     }
 
     public function test_login_failures_keep_their_oauth_code(): void
     {
-        $this->assertProblem($this->postJson('/api/v1/auth/login', [
+        $this->assertProblem($this->postJson('/api/auth/v1/login', [
             'email' => 'ana@example.com',
             'password' => 'wrong-password',
         ]), 401, 'invalid_grant')->assertJsonPath('title', 'Credenciales inválidas');
@@ -84,7 +84,7 @@ class ProblemDetailsTest extends TestCase
     {
         Log::spy();
 
-        $this->postJson('/api/v1/auth/login', ['email' => 'ana@example.com', 'password' => 'wrong-password'])
+        $this->postJson('/api/auth/v1/login', ['email' => 'ana@example.com', 'password' => 'wrong-password'])
             ->assertUnauthorized();
 
         Log::shouldNotHaveReceived('error');
@@ -95,7 +95,7 @@ class ProblemDetailsTest extends TestCase
         config(['oauth.password_client.secret' => 'wrong-secret']);
         Log::spy();
 
-        $this->assertProblem($this->postJson('/api/v1/auth/login', [
+        $this->assertProblem($this->postJson('/api/auth/v1/login', [
             'email' => 'ana@example.com',
             'password' => 'secret-password',
         ]), 500, 'invalid_client')
@@ -109,11 +109,11 @@ class ProblemDetailsTest extends TestCase
     public function test_the_rate_limit_answers_a_problem_with_retry_after(): void
     {
         foreach (range(1, 10) as $attempt) {
-            $this->postJson('/api/v1/auth/login', ['email' => 'ana@example.com', 'password' => 'wrong-password']);
+            $this->postJson('/api/auth/v1/login', ['email' => 'ana@example.com', 'password' => 'wrong-password']);
         }
 
         $this->assertProblem(
-            $this->postJson('/api/v1/auth/login', ['email' => 'ana@example.com', 'password' => 'wrong-password']),
+            $this->postJson('/api/auth/v1/login', ['email' => 'ana@example.com', 'password' => 'wrong-password']),
             429,
             'LIMITE_EXCEDIDO',
         )->assertHeader('Retry-After');
@@ -121,26 +121,26 @@ class ProblemDetailsTest extends TestCase
 
     public function test_unknown_routes_get_a_problem(): void
     {
-        $this->assertProblem($this->getJson('/api/v1/auth/does-not-exist'), 404, 'RUTA_NO_ENCONTRADA');
+        $this->assertProblem($this->getJson('/api/auth/v1/does-not-exist'), 404, 'RUTA_NO_ENCONTRADA');
     }
 
     public function test_unexpected_errors_do_not_expose_the_exception(): void
     {
-        Route::get('api/v1/auth/broken', fn () => throw new RuntimeException('secret internal detail'));
+        Route::get('api/auth/v1/broken', fn () => throw new RuntimeException('secret internal detail'));
 
-        $this->assertProblem($this->getJson('/api/v1/auth/broken'), 500, 'ERROR_INTERNO')
+        $this->assertProblem($this->getJson('/api/auth/v1/broken'), 500, 'ERROR_INTERNO')
             ->assertDontSee('secret internal detail')
             ->assertJsonMissingPath('trace');
     }
 
     /**
-     * UBO.Common reads "error" and "error_description" from /oauth/token.
+     * UBO.Common reads "error" and "error_description" from /api/auth/oauth/token.
      */
     public function test_the_token_endpoint_keeps_the_oauth2_error_format(): void
     {
         $client = app(ClientRepository::class)->createClientCredentialsGrantClient('Orders Service');
 
-        $response = $this->postJson('/oauth/token', [
+        $response = $this->postJson('/api/auth/oauth/token', [
             'grant_type' => 'client_credentials',
             'client_id' => $client->getKey(),
             'client_secret' => 'wrong-secret',
@@ -157,6 +157,6 @@ class ProblemDetailsTest extends TestCase
      */
     public function test_introspection_without_a_service_token_still_answers_401(): void
     {
-        $this->assertProblem($this->postJson('/api/v1/auth/introspect', ['token' => 'any']), 401, 'NO_AUTENTICADO');
+        $this->assertProblem($this->postJson('/api/auth/v1/introspect', ['token' => 'any']), 401, 'NO_AUTENTICADO');
     }
 }

@@ -119,7 +119,7 @@ class OAuthTokenService
      */
     protected function requestToken(array $params): array
     {
-        $request = (new ServerRequest('POST', '/oauth/token'))->withParsedBody([
+        $request = (new ServerRequest('POST', '/api/auth/oauth/token'))->withParsedBody([
             ...$params,
             'client_id' => config('oauth.password_client.id'),
             'client_secret' => config('oauth.password_client.secret'),

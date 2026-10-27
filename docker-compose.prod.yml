@@ -54,15 +54,25 @@ services:
             - "${DOCKER_HTTP_PORT_PROD:-80}:80"
         volumes:
             - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+        # "proxy": red del proxy inverso (ubo-nginx-proxy), que llega a este nginx por su container_name.
+        # Solo se une nginx: app queda en la red interna del proyecto.
+        networks:
+            - default
+            - proxy
         depends_on:
             app:
                 condition: service_healthy
         restart: unless-stopped
         # Salud de punta a punta: nginx → PHP-FPM → base de datos
         healthcheck:
-            test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/api/v1/salud"]
+            test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/api/auth/v1/salud"]
             interval: 30s
             timeout: 5s
             retries: 3
             start_period: 30s
         logging: *logging
+
+# Red creada por el proxy inverso; debe existir antes de levantar este compose.
+networks:
+    proxy:
+        external: true
