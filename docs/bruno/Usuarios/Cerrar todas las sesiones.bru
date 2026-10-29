@@ -1,0 +1,42 @@
+meta {
+  name: Cerrar todas las sesiones
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/auth/v1/logout-all
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("responde 200 y cierra todas las sesiones", function () {
+    expect(res.status).to.equal(200);
+    expect(res.body.message).to.equal("All sessions closed.");
+  });
+}
+
+docs {
+  # Cerrar todas las sesiones
+
+  `POST /api/auth/v1/logout-all` · Bearer de usuario
+
+  Revoca todos los tokens vigentes del usuario (todos los dispositivos), no solo el actual.
+
+  ## Respuesta 200
+
+  ```json
+  { "message": "All sessions closed." }
+  ```
+
+  ## Errores
+
+  | Estado | `error` | Cuándo |
+  |---|---|---|
+  | 401 | `NO_AUTENTICADO` | Falta el token, o es inválido, vencido o revocado |
+}

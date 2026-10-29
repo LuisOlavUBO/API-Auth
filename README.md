@@ -167,6 +167,10 @@ curl -X POST http://localhost:8000/api/auth/v1/login -H "Accept: application/jso
 curl http://localhost:8000/api/auth/v1/me -H "Accept: application/json" -H "Authorization: Bearer <access_token>"
 ```
 
+### Colección Bruno
+
+[docs/bruno](docs/bruno) es una colección de [Bruno](https://www.usebruno.com/) con todos los endpoints, documentados y con tests. Se abre con *Open Collection* sobre esa carpeta; se elige el entorno `Local` o `Servidor` y se completan `email`, `password`, `client_id` y `client_secret` (las secretas quedan solo en el equipo). **Iniciar sesión** guarda `accessToken`/`refreshToken` y **Token de cliente (introspect)** guarda `clientToken` para las demás solicitudes.
+
 ## Integrar otro microservicio
 
 1. Crear un cliente para el servicio y darle roles (sin roles no puede pedir ningún scope):

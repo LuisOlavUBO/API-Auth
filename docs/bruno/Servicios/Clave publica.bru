@@ -1,0 +1,34 @@
+meta {
+  name: Clave pública
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/auth/v1/public-key
+  body: none
+  auth: none
+}
+
+tests {
+  test("responde 200 con una clave PEM", function () {
+    expect(res.status).to.equal(200);
+    expect(res.body).to.contain("BEGIN PUBLIC KEY");
+  });
+}
+
+docs {
+  # Clave pública
+
+  `GET /api/auth/v1/public-key` · sin autenticación
+
+  Clave pública PEM (`application/x-pem-file`) para verificar localmente la firma RS256 de los JWT sin llamar a esta API. La verificación local no detecta revocaciones: para eso usar **Introspección**.
+
+  ## Respuesta 200
+
+  ```
+  -----BEGIN PUBLIC KEY-----
+  MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA...
+  -----END PUBLIC KEY-----
+  ```
+}

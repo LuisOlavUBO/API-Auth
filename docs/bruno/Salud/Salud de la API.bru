@@ -1,0 +1,39 @@
+meta {
+  name: Salud de la API
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/auth/v1/salud
+  body: none
+  auth: none
+}
+
+tests {
+  test("la API y la base de datos están operativas", function () {
+    expect(res.status).to.equal(200);
+    expect(res.body.estado).to.equal("OK");
+    expect(res.body.base_datos).to.equal("OK");
+  });
+}
+
+docs {
+  # Estado de la API y de la base de datos
+
+  `GET /api/auth/v1/salud` · sin autenticación
+
+  Ejecuta una consulta trivial en la base de datos. Lo usa el healthcheck de nginx en `docker-compose.prod.yml`. Misma forma que en las demás APIs de la UBO (módulo Health de UBO.Common).
+
+  ## Respuesta 200
+
+  ```json
+  { "estado": "OK", "base_datos": "OK" }
+  ```
+
+  ## Respuesta 503
+
+  ```json
+  { "estado": "ERROR", "base_datos": "NO_DISPONIBLE" }
+  ```
+}

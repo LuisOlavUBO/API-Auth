@@ -1,0 +1,42 @@
+meta {
+  name: Cerrar sesión
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/auth/v1/logout
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("responde 200 y cierra la sesión", function () {
+    expect(res.status).to.equal(200);
+    expect(res.body.message).to.equal("Session closed.");
+  });
+}
+
+docs {
+  # Cerrar la sesión actual
+
+  `POST /api/auth/v1/logout` · Bearer de usuario
+
+  Revoca el access token actual y su refresh token. Después hay que volver a **Iniciar sesión**.
+
+  ## Respuesta 200
+
+  ```json
+  { "message": "Session closed." }
+  ```
+
+  ## Errores
+
+  | Estado | `error` | Cuándo |
+  |---|---|---|
+  | 401 | `NO_AUTENTICADO` | Falta el token, o es inválido, vencido o revocado |
+}

@@ -1,0 +1,68 @@
+headers {
+  Accept: application/json
+}
+
+docs {
+  # API-Auth
+
+  Microservicio OAuth2 (Laravel + Passport) que emite y valida los tokens JWT (RS256) del resto de las APIs de la UBO. Todas las rutas viven bajo `/api/auth`.
+
+  ## Cómo usar la colección
+
+  1. Elegir un entorno (`Local` o `Servidor`) y completar sus variables:
+
+  | Variable | Uso |
+  |---|---|
+  | `baseUrl` | Raíz del servidor, sin `/api/auth` |
+  | `email`, `password` | Credenciales de un usuario para **Iniciar sesión** (`password` es secreta: Bruno la guarda solo en tu equipo) |
+  | `scope` | Scopes del login, separados por espacio (por defecto `user:read`) |
+  | `client_id`, `client_secret` | Cliente `client_credentials` de un microservicio (`client_secret` es secreta) |
+  | `api` | API para la que se pide un token de cliente (p. ej. `api-maestros`) |
+
+  2. Ejecutar **Usuarios / Iniciar sesión** (o **Registrar**): guarda `accessToken` y `refreshToken` como variables de ejecución, que usan las demás solicitudes de usuario.
+  3. Para los endpoints de servicio, ejecutar **Servicios / Token de cliente (introspect)**: guarda `clientToken`, que usa **Introspección**.
+
+  ## Autenticación
+
+  - **Token de usuario** (password grant): lo emiten `/register`, `/login` y `/refresh`. Se envía como `Authorization: Bearer {{accessToken}}`.
+  - **Token de cliente** (`client_credentials`): lo emite `POST /api/auth/oauth/token` con el `client_id` y `client_secret` del servicio. Se envía como `Authorization: Bearer {{clientToken}}`.
+
+  Los scopes viven en la base de datos y se asignan por rol. Pedir un scope que el rol no tiene responde `400 invalid_scope`.
+
+  ## Errores (RFC 9457)
+
+  Las rutas `/api/auth/v1/*` responden los errores como `application/problem+json`:
+
+  ```json
+  {
+    "type": "about:blank",
+    "title": "Credenciales inválidas",
+    "status": 401,
+    "detail": "The user credentials were incorrect.",
+    "error": "invalid_grant"
+  }
+  ```
+
+  | `error` | Estado | Cuándo |
+  |---|---|---|
+  | `invalid_grant` | 401 | Login o refresh con credenciales o refresh token inválidos |
+  | `invalid_scope`, `invalid_request` | 400 | Login o refresh con un scope o una solicitud OAuth inválidos |
+  | `NO_AUTENTICADO` | 401 | Falta el token, o es inválido, vencido o revocado |
+  | `SCOPE_INSUFICIENTE` | 403 | El token no tiene el scope que exige la ruta |
+  | `VALIDACION` | 422 | Datos inválidos; los mensajes por campo van en `errores` |
+  | `LIMITE_EXCEDIDO` | 429 | Rate limit superado; `Retry-After` indica cuándo reintentar |
+  | `RUTA_NO_ENCONTRADA` / `METODO_NO_PERMITIDO` | 404 / 405 | La ruta o el método no existen |
+  | `ERROR_INTERNO` | 500 | Error inesperado; el detalle queda solo en el log |
+
+  `POST /api/auth/oauth/token` es el endpoint estándar de Passport y mantiene el formato OAuth2 (`{error, error_description, hint}`).
+
+  ## Rate limit y tracing
+
+  - `register`, `login` y `refresh`: 10 solicitudes por minuto por email + IP.
+  - Toda respuesta trae el header `X-Trace-Id` con el `trace_id` de la petición. Si se envía un `traceparent` (W3C Trace Context), la traza continúa.
+
+  ## Documentación relacionada
+
+  - Swagger UI: `{{baseUrl}}/api/auth/docs/swagger`
+  - OpenAPI: `{{baseUrl}}/api/auth/docs/openapi.yaml`
+}

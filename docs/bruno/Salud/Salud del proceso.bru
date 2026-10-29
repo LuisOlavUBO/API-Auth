@@ -1,0 +1,25 @@
+meta {
+  name: Salud del proceso
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/up
+  body: none
+  auth: none
+}
+
+tests {
+  test("el proceso está arriba", function () {
+    expect(res.status).to.equal(200);
+  });
+}
+
+docs {
+  # Salud del proceso
+
+  `GET /up` · sin autenticación
+
+  Health check de Laravel: responde `200` si la aplicación arrancó. No consulta la base de datos (para eso, **Salud de la API**). Está fuera del prefijo `/api/auth`, así que detrás de `ubo-nginx-proxy` puede no estar publicado; sirve con acceso directo al contenedor.
+}

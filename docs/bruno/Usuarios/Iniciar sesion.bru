@@ -1,0 +1,74 @@
+meta {
+  name: Iniciar sesión
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/auth/v1/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "{{email}}",
+    "password": "{{password}}",
+    "scope": "{{scope}}"
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("accessToken", res.body.access_token);
+    bru.setVar("refreshToken", res.body.refresh_token);
+  }
+}
+
+tests {
+  test("responde 200 con un par de tokens Bearer", function () {
+    expect(res.status).to.equal(200);
+    expect(res.body.token_type).to.equal("Bearer");
+    expect(res.body).to.have.property("access_token");
+    expect(res.body).to.have.property("refresh_token");
+  });
+}
+
+docs {
+  # Iniciar sesión
+
+  `POST /api/auth/v1/login` · sin autenticación · rate limit 10/min por email + IP
+
+  Cambia email y contraseña por un par de tokens. Guarda `accessToken` y `refreshToken` para las demás solicitudes.
+
+  ## Cuerpo (JSON)
+
+  | Campo | Tipo | Requerido | Descripción |
+  |---|---|---|---|
+  | `email` | string | sí | Email del usuario |
+  | `password` | string | sí | Contraseña |
+  | `scope` | string \| null | no | Scopes separados por espacio (p. ej. `user:read user:write`). Sin valor se pide `user:read` |
+
+  ## Respuesta 200
+
+  ```json
+  {
+    "token_type": "Bearer",
+    "expires_in": 3600,
+    "access_token": "eyJ0eXAiOiJKV1Qi...",
+    "refresh_token": "def50200..."
+  }
+  ```
+
+  `expires_in` está en segundos (`PASSPORT_ACCESS_TOKEN_TTL`, 60 min por defecto).
+
+  ## Errores
+
+  | Estado | `error` | Cuándo |
+  |---|---|---|
+  | 400 | `invalid_scope` / `invalid_request` | Scope que el rol del usuario no tiene, o solicitud OAuth inválida |
+  | 401 | `invalid_grant` | Email o contraseña incorrectos |
+  | 422 | `VALIDACION` | Falta `email` o `password`, o el email no es válido |
+  | 429 | `LIMITE_EXCEDIDO` | Rate limit superado (ver `Retry-After`) |
+  | 500 | `ERROR_INTERNO` | Error inesperado |
+}

@@ -1,0 +1,85 @@
+meta {
+  name: Registrar
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/auth/v1/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "Usuario de prueba",
+    "email": "{{registerEmail}}",
+    "password": "{{registerPassword}}",
+    "password_confirmation": "{{registerPassword}}"
+  }
+}
+
+script:pre-request {
+  // Un email nuevo en cada ejecución: el email debe ser único.
+  bru.setVar("registerEmail", `usuario.${Date.now()}@example.com`);
+  bru.setVar("registerPassword", "Password-de-prueba-123");
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setVar("accessToken", res.body.access_token);
+    bru.setVar("refreshToken", res.body.refresh_token);
+  }
+}
+
+tests {
+  test("responde 201 con el usuario y su par de tokens", function () {
+    expect(res.status).to.equal(201);
+    expect(res.body.user).to.have.property("id");
+    expect(res.body).to.have.property("access_token");
+    expect(res.body).to.have.property("refresh_token");
+  });
+}
+
+docs {
+  # Registrar un usuario
+
+  `POST /api/auth/v1/register` · sin autenticación · rate limit 10/min por email + IP
+
+  Crea la cuenta con el rol por defecto (`OAUTH_DEFAULT_ROLE`, `user`) y devuelve su primer par de tokens. La colección genera un email único en cada ejecución y guarda `accessToken` y `refreshToken`.
+
+  ## Cuerpo (JSON)
+
+  | Campo | Tipo | Requerido | Reglas |
+  |---|---|---|---|
+  | `name` | string | sí | máx. 255 |
+  | `email` | string | sí | email, máx. 255, único |
+  | `password` | string | sí | política de contraseñas por defecto |
+  | `password_confirmation` | string | sí | igual a `password` |
+
+  ## Respuesta 201
+
+  ```json
+  {
+    "user": {
+      "id": 1,
+      "name": "Usuario de prueba",
+      "email": "usuario@example.com",
+      "email_verified_at": null,
+      "created_at": "2026-10-27T12:00:00.000000Z"
+    },
+    "token_type": "Bearer",
+    "expires_in": 3600,
+    "access_token": "eyJ0eXAiOiJKV1Qi...",
+    "refresh_token": "def50200..."
+  }
+  ```
+
+  ## Errores
+
+  | Estado | `error` | Cuándo |
+  |---|---|---|
+  | 422 | `VALIDACION` | Datos inválidos o email ya registrado |
+  | 429 | `LIMITE_EXCEDIDO` | Rate limit superado |
+  | 500 | `ERROR_INTERNO` | Error inesperado (p. ej. cliente password mal configurado) |
+}
