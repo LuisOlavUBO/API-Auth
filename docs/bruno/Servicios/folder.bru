@@ -1,0 +1,20 @@
+meta {
+  name: Servicios
+  seq: 2
+}
+
+docs {
+  Endpoints para otros microservicios. Cada servicio pide su token a `POST /api/auth/oauth/token` con `client_credentials` (requiere `client_id` y `client_secret` en el entorno).
+
+  Para validar el token de un usuario hay dos opciones:
+
+  - **Introspección**: detecta revocaciones y logout; requiere un token de cliente con scope `introspect`.
+  - **Verificación local**: verificar la firma RS256 del JWT con la **Clave pública** y revisar `exp`. No detecta revocaciones hasta que el token vence.
+
+  Crear un cliente y darle roles (sin roles no puede pedir ningún scope):
+
+  ```bash
+  php artisan passport:client --client --name="orders-service"
+  php artisan oauth:client-role orders-service introspector
+  ```
+}

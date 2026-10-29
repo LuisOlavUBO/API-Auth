@@ -1,0 +1,52 @@
+meta {
+  name: Token de cliente por API
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/auth/oauth/token
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  grant_type: client_credentials
+  client_id: {{client_id}}
+  client_secret: {{client_secret}}
+  api: {{api}}
+  ~scope:
+}
+
+tests {
+  test("responde 200 con un token de cliente", function () {
+    expect(res.status).to.equal(200);
+    expect(res.body).to.have.property("access_token");
+  });
+}
+
+docs {
+  # Token de cliente para una API
+
+  `POST /api/auth/oauth/token` · sin autenticación · `application/x-www-form-urlencoded`
+
+  Forma recomendada de pedir un token para llamar a otra API: con el parámetro `api` (variable `{{api}}`, p. ej. `api-maestros`) el token nombra esa API en su `aud` (`["<client id>", "api-maestros"]`) y solo sirve en ella.
+
+  - Sin `scope`: trae todos los scopes que los roles del cliente le dan en esa API.
+  - Con `scope` (campo desactivado en la colección): todos deben pertenecer a esa API.
+  - API inexistente: `400 invalid_request`. Cliente sin scopes en esa API: `400 invalid_scope`.
+
+  El token no se guarda en ninguna variable: es para la API destino, no para esta.
+
+  ## Respuesta 200
+
+  ```json
+  {
+    "token_type": "Bearer",
+    "expires_in": 3600,
+    "access_token": "eyJ0eXAiOiJKV1Qi..."
+  }
+  ```
+
+  Los errores son los mismos de **Token de cliente (introspect)**, en formato OAuth2.
+}

@@ -1,0 +1,80 @@
+meta {
+  name: Token de cliente (introspect)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/auth/oauth/token
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  grant_type: client_credentials
+  client_id: {{client_id}}
+  client_secret: {{client_secret}}
+  scope: introspect
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("clientToken", res.body.access_token);
+  }
+}
+
+tests {
+  test("responde 200 con un token de cliente", function () {
+    expect(res.status).to.equal(200);
+    expect(res.body.token_type).to.equal("Bearer");
+    expect(res.body).to.have.property("access_token");
+  });
+}
+
+docs {
+  # Token de cliente con scope `introspect`
+
+  `POST /api/auth/oauth/token` · sin autenticación · `application/x-www-form-urlencoded`
+
+  Endpoint estándar OAuth2 de Passport. Pide un token `client_credentials` con el scope `introspect` y lo guarda en `clientToken` para **Introspección**. El cliente necesita un rol que le dé ese scope (p. ej. `introspector`).
+
+  ## Cuerpo (form)
+
+  | Campo | Requerido | Descripción |
+  |---|---|---|
+  | `grant_type` | sí | `client_credentials` |
+  | `client_id` | sí | ID del cliente |
+  | `client_secret` | sí | Secreto del cliente |
+  | `scope` | no | Scopes separados por espacio |
+  | `api` | no | Nombre de la API para la que se pide el token (ver **Token de cliente por API**) |
+
+  ## Respuesta 200
+
+  ```json
+  {
+    "token_type": "Bearer",
+    "expires_in": 3600,
+    "access_token": "eyJ0eXAiOiJKV1Qi..."
+  }
+  ```
+
+  `expires_in` está en segundos (`PASSPORT_CLIENT_TOKEN_TTL`, 60 min por defecto).
+
+  ## Errores (formato OAuth2, no RFC 9457)
+
+  ```json
+  {
+    "error": "invalid_scope",
+    "error_description": "The requested scope is invalid, unknown, or malformed",
+    "hint": "Check the `introspect` scope",
+    "message": "The requested scope is invalid, unknown, or malformed"
+  }
+  ```
+
+  | Estado | `error` | Cuándo |
+  |---|---|---|
+  | 400 | `invalid_request` | Falta un campo o la API no existe |
+  | 400 | `invalid_scope` | El cliente no tiene ese scope (o no tiene roles) |
+  | 400 | `unsupported_grant_type` | `grant_type` distinto de `client_credentials` |
+  | 401 | `invalid_client` | Cliente inexistente o secreto incorrecto |
+}
