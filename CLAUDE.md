@@ -129,3 +129,47 @@ Before relying on a package's API, confirm its installed version:
 - Run `vendor/bin/phpunit` to call the test runner directly. It accepts the same file path and `--filter=testName` arguments.
 
 </laravel-boost-guidelines>
+
+# API-Auth (contexto del proyecto)
+
+## Qué es
+- Servicio de autenticación con Laravel Passport (tokens JWT) y el paquete `ubo/common` (Problems, Health, SqlServer).
+- Objetivo a futuro: servicio de autenticación central para los satélites (SSO con Entra ID, login con PKCE, roles por sistema). Aún no implementado.
+
+## Principio KISS (Keep It Simple, Stupid)
+- Resolver lo que se pide hoy con la solución más simple que funcione. Nada de capas, abstracciones, interfaces, patrones o configuraciones "por si acaso".
+- No anticipar requisitos futuros: si una fase posterior lo necesita, se diseña en esa fase.
+- Preferir las herramientas que ya traen Laravel, Passport y `ubo/common` antes que código propio o dependencias nuevas.
+- Un cambio toca solo lo necesario: sin refactors, renombres ni "mejoras" que nadie pidió.
+- Si hay dos opciones, elegir la más fácil de leer y de borrar. Ante la duda, preguntar antes de agregar complejidad.
+- Aplica también a los artefactos de OpenSpec: propuestas, diseños y tareas cortos y acotados al cambio.
+
+## Metodología de desarrollo con OpenSpec
+- El comportamiento vigente está especificado en `openspec/specs/` (una carpeta por capacidad). Es la fuente de verdad: leer la spec afectada antes de proponer o implementar.
+- Todo cambio de comportamiento pasa por un cambio de OpenSpec en `openspec/changes/<nombre>/`. Los arreglos menores que no cambian comportamiento (copy, estilo, formato) no lo necesitan.
+- Flujo:
+  1. `/opsx:explore`: pensar el problema y aclarar requisitos, sin escribir código.
+  2. `/opsx:propose`: crear el cambio con `proposal.md`, specs delta y, si hace falta, `design.md` y `tasks.md`. Indicar qué queda fuera de alcance.
+  3. Esperar la aprobación del usuario antes de implementar.
+  4. `/opsx:apply`: implementar las tareas en orden, con sus tests, marcándolas al terminar.
+  5. `/opsx:update`: si las decisiones cambian a mitad de camino, actualizar los artefactos antes de seguir con el código.
+  6. `/opsx:archive`: al terminar y verificar, archivar el cambio para que sus specs delta pasen a `openspec/specs/`.
+- Los artefactos se escriben en español, con requisitos en formato `SHALL`/`MUST` y escenarios `#### Scenario:`, igual que las specs existentes.
+- El código, los tests y la spec deben coincidir: si la implementación se aparta de la spec, se corrige una de las dos antes de archivar.
+
+## Rutas
+- Todas las rutas se publican bajo `/api/auth` (`App\Http\ApiPrefix`) y se versionan con `v1`.
+- `/api/auth/oauth/token` es la única ruta de Passport en uso; no se versiona y mantiene el formato de error de OAuth2.
+- Errores en formato Problem Details (`ProblemRenderer` de `ubo/common`).
+- Endpoints entre servicios (client credentials): `introspect` (scope `introspect`) y `public-key`.
+
+## Base de datos
+- SQL Server.
+- Tests: SQL Server en Docker (`DB_HOST=127.0.0.1`, `DB_PORT=14334`, base `apiauth_test`, usuario `sa`, contraseña en `DOCKER_MSSQL_SA_PASSWORD` del `.env`). Sobrescribir las variables `DB_*` en cada comando de test o migración.
+- El `.env` apunta al SQL Server remoto de desarrollo (10.16.2.138). No ejecutar `migrate` contra él salvo que se pida explícitamente.
+
+## Documentación
+- OpenAPI en `docs/openapi/` y colección de Bruno en `docs/bruno/`. Actualizarlas cuando cambie un endpoint.
+
+## Dependencias nuevas
+- Requieren aprobación previa (p. ej. Socialite para Entra ID).
