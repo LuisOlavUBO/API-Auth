@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Application;
 use App\Models\OAuthScope;
 use App\Models\Role;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -19,6 +20,7 @@ class RoleFactory extends Factory
     public function definition(): array
     {
         return [
+            'application_id' => Application::factory(),
             'name' => fake()->unique()->slug(2),
             'description' => fake()->sentence(),
         ];

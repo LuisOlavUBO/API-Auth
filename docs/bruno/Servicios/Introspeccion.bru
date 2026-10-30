@@ -25,6 +25,12 @@ tests {
     expect(res.status).to.equal(200);
     expect(res.body).to.have.property("active");
   });
+
+  test("incluye los roles del token cuando está activo", function () {
+    if (res.body.active) {
+      expect(res.body.roles).to.be.an("array");
+    }
+  });
 }
 
 docs {
@@ -49,7 +55,8 @@ docs {
     "client_id": "9d1c...",
     "sub": "1",
     "scope": "user:read",
-    "aud": ["9d1c..."],
+    "aud": ["9d1c...", "api-auth"],
+    "roles": ["user"],
     "exp": 1793102400,
     "user": {
       "id": 1,
@@ -61,7 +68,7 @@ docs {
   }
   ```
 
-  `sub` y `user` son `null` en tokens de cliente. `aud` incluye el nombre de la API si el token se pidió con `api`.
+  `sub` y `user` son `null` en tokens de cliente. `aud` incluye el nombre de la API si el token se pidió con `api`, y en un token de usuario las aplicaciones dueñas de sus scopes. `roles` es la claim `roles` del token: los roles del usuario en la aplicación del cliente, o los del cliente que conceden alguno de sus scopes.
 
   ## Respuesta 200 (token inválido, vencido o revocado)
 

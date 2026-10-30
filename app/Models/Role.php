@@ -6,15 +6,27 @@ use Database\Factories\RoleFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Laravel\Passport\Passport;
 
-#[Fillable(['name', 'description'])]
+/**
+ * A set of scopes, which may belong to any application, owned by one application:
+ * the one where its users and clients use it.
+ */
+#[Fillable(['application_id', 'name', 'description'])]
 class Role extends Model
 {
     /** @use HasFactory<RoleFactory> */
     use HasFactory;
+
+    /**
+     * Application that defines this role.
+     */
+    public function application(): BelongsTo
+    {
+        return $this->belongsTo(Application::class);
+    }
 
     /**
      * Scopes that users and clients with this role may request in their tokens.
@@ -24,13 +36,13 @@ class Role extends Model
         return $this->belongsToMany(OAuthScope::class, 'oauth_scope_role', 'role_id', 'oauth_scope_id');
     }
 
-    public function users(): HasMany
+    public function users(): BelongsToMany
     {
-        return $this->hasMany(User::class);
+        return $this->belongsToMany(User::class, 'role_user', 'role_id', 'user_id');
     }
 
     /**
-     * OAuth clients (other systems) that hold this role.
+     * OAuth clients that hold this role.
      */
     public function clients(): BelongsToMany
     {

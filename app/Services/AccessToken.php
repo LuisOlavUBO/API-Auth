@@ -10,11 +10,13 @@ use League\OAuth2\Server\Entities\ScopeEntityInterface;
 use League\OAuth2\Server\Entities\Traits\AccessTokenTrait;
 
 /**
- * Passport's access token with the target API added to the "aud" claim.
+ * Passport's access token with the applications added to the "aud" claim and
+ * the roles in a "roles" claim.
  *
- * Passport sets "aud" to the client id only. When ScopeRepository issues a
- * token for one API (client credentials with "api"), AccessTokenRepository
- * passes the API name and it is added after the client id:
+ * Passport sets "aud" to the client id only. ScopeRepository decides which
+ * applications the token is for (the one named with "api" in a client
+ * credentials token, the owners of its scopes in a user token) and
+ * AccessTokenRepository passes them here, added after the client id:
  * "aud": ["<client id>", "api-maestros"]. The client id stays first so
  * consumers that read it from aud[0] keep working, and each API can reject
  * tokens issued for another one.
@@ -26,28 +28,35 @@ class AccessToken extends PassportAccessToken
     /**
      * @param  non-empty-string|null  $userIdentifier
      * @param  ScopeEntityInterface[]  $scopes
-     * @param  string|null  $api  API the token is for; null for a token for no particular API.
+     * @param  string[]  $applications  Applications the token is for, named in "aud" after the client id.
+     * @param  string[]  $roles  Roles named in the "roles" claim.
      */
-    public function __construct(?string $userIdentifier, array $scopes, ClientEntityInterface $client, protected ?string $api = null)
-    {
+    public function __construct(
+        ?string $userIdentifier,
+        array $scopes,
+        ClientEntityInterface $client,
+        protected array $applications = [],
+        protected array $roles = [],
+    ) {
         parent::__construct($userIdentifier, $scopes, $client);
     }
 
     /**
-     * Same claims as league/oauth2-server, with the API in the audience.
+     * Same claims as league/oauth2-server, with the applications in the audience and the roles.
      */
     private function convertToJWT(): Token
     {
         $this->initJwtConfiguration();
 
         return $this->jwtConfiguration->builder()
-            ->permittedFor(...array_filter([$this->getClient()->getIdentifier(), $this->api]))
+            ->permittedFor($this->getClient()->getIdentifier(), ...$this->applications)
             ->identifiedBy($this->getIdentifier())
             ->issuedAt(new DateTimeImmutable)
             ->canOnlyBeUsedAfter(new DateTimeImmutable)
             ->expiresAt($this->getExpiryDateTime())
             ->relatedTo($this->getSubjectIdentifier())
             ->withClaim('scopes', $this->getScopes())
+            ->withClaim('roles', $this->roles)
             ->getToken($this->jwtConfiguration->signer(), $this->jwtConfiguration->signingKey());
     }
 }

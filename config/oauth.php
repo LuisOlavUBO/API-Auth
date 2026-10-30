@@ -46,4 +46,7 @@ return [
 
     'default_role' => env('OAUTH_DEFAULT_ROLE', 'user'),
 
+    // Application that owns default_role and the clients of /api/auth/v1.
+    'application' => env('OAUTH_APPLICATION', 'api-auth'),
+
 ];

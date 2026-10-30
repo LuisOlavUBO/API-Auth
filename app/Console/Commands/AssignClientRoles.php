@@ -3,18 +3,19 @@
 namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\ResolvesOAuthClient;
+use App\Console\Commands\Concerns\ResolvesRoles;
 use App\Models\OAuthScope;
-use App\Models\Role;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
-#[Signature('oauth:client-role {client : Client id or name} {roles* : Role names} {--sync : Replace the client roles instead of adding to them}')]
+#[Signature('oauth:client-role {client : Client id or name} {roles* : Roles as <application>/<role>} {--sync : Replace the client roles instead of adding to them}')]
 #[Description('Grant roles (and therefore their scopes) to an OAuth client')]
 class AssignClientRoles extends Command
 {
     use ResolvesOAuthClient;
+    use ResolvesRoles;
 
     /**
      * Execute the console command.
@@ -27,13 +28,9 @@ class AssignClientRoles extends Command
             return self::FAILURE;
         }
 
-        $roleNames = $this->argument('roles');
-        $roles = Role::whereIn('name', $roleNames)->get();
-        $missing = array_diff($roleNames, $roles->pluck('name')->all());
+        $roles = $this->resolveRoles($this->argument('roles'));
 
-        if ($missing !== []) {
-            $this->error('Unknown role(s): '.implode(', ', $missing));
-
+        if (! $roles) {
             return self::FAILURE;
         }
 

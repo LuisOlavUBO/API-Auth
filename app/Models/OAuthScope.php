@@ -12,9 +12,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /**
  * A permission that access tokens may carry (e.g. "geografia:leer"),
- * owned by the API that enforces it.
+ * owned by the application that enforces it.
  */
-#[Fillable(['api_id', 'name', 'description'])]
+#[Fillable(['application_id', 'name', 'description'])]
 class OAuthScope extends Model
 {
     /** @use HasFactory<OAuthScopeFactory> */
@@ -31,16 +31,16 @@ class OAuthScope extends Model
     {
         return [
             // pdo_sqlsrv returns integer columns as strings.
-            'api_id' => 'integer',
+            'application_id' => 'integer',
         ];
     }
 
     /**
-     * API that requires this scope on its endpoints.
+     * Application that requires this scope on its endpoints.
      */
-    public function api(): BelongsTo
+    public function application(): BelongsTo
     {
-        return $this->belongsTo(Api::class);
+        return $this->belongsTo(Application::class);
     }
 
     /**
@@ -73,14 +73,14 @@ class OAuthScope extends Model
     }
 
     /**
-     * Names of the scopes granted to an OAuth client through its roles that belong to one API.
+     * Names of the scopes granted to an OAuth client through its roles that belong to one application.
      *
      * @return string[]
      */
-    public static function namesForClientInApi(string $clientId, string $apiName): array
+    public static function namesForClientInApplication(string $clientId, string $applicationName): array
     {
         return static::grantedToClient($clientId)
-            ->whereHas('api', fn (Builder $api) => $api->where('name', $apiName))
+            ->whereHas('application', fn (Builder $application) => $application->where('name', $applicationName))
             ->pluck('name')
             ->all();
     }

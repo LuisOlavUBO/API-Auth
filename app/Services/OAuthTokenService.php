@@ -36,7 +36,7 @@ class OAuthTokenService
             'grant_type' => 'password',
             'username' => $email,
             'password' => $password,
-            'scope' => $scope ?? '',
+            'scope' => $scope ?? implode(' ', config('oauth.default_scopes')),
         ]);
     }
 
@@ -63,9 +63,9 @@ class OAuthTokenService
      * is reported as having no user.
      *
      * "audiences" is the token's "aud" claim: the client ID and, for tokens
-     * issued for one API, that API's name.
+     * issued for one API, that API's name. "roles" is the token's "roles" claim.
      *
-     * @return array{token_id: string, client_id: string, user_id: string|null, scopes: string[], audiences: string[]}|null
+     * @return array{token_id: string, client_id: string, user_id: string|null, scopes: string[], audiences: string[], roles: string[]}|null
      */
     public function introspect(string $accessToken): ?array
     {
@@ -87,6 +87,7 @@ class OAuthTokenService
             'user_id' => $subject && strcasecmp($subject, $clientId) !== 0 ? $subject : null,
             'scopes' => $validated->getAttribute('oauth_scopes', []),
             'audiences' => $this->audiencesOf($accessToken),
+            'roles' => $this->rolesOf($accessToken),
         ];
     }
 
@@ -101,6 +102,20 @@ class OAuthTokenService
 
         return $token instanceof UnencryptedToken
             ? array_values($token->claims()->get(RegisteredClaims::AUDIENCE, []))
+            : [];
+    }
+
+    /**
+     * The "roles" claim of a token that the resource server already validated.
+     *
+     * @return string[]
+     */
+    protected function rolesOf(string $accessToken): array
+    {
+        $token = (new Parser(new JoseEncoder))->parse($accessToken);
+
+        return $token instanceof UnencryptedToken
+            ? array_values($token->claims()->get('roles', []))
             : [];
     }
 

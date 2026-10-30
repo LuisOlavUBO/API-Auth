@@ -7,7 +7,6 @@ use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\RoleScopeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Laravel\Passport\ClientRepository;
 use Tests\TestCase;
 
 class AuthTest extends TestCase
@@ -18,7 +17,7 @@ class AuthTest extends TestCase
     {
         parent::setUp();
 
-        $client = app(ClientRepository::class)->createPasswordGrantClient('Test Password Client', 'users', true);
+        $client = $this->createClient('Test Password Client', 'password');
 
         config([
             'oauth.password_client.id' => $client->getKey(),
@@ -30,7 +29,7 @@ class AuthTest extends TestCase
 
     protected function createUser(string $role = 'user'): User
     {
-        return User::factory()->for(Role::firstWhere('name', $role))->create([
+        return User::factory()->withRoles(Role::firstWhere('name', $role))->create([
             'email' => 'ana@example.com',
             'password' => 'secret-password',
         ]);
@@ -161,7 +160,7 @@ class AuthTest extends TestCase
             'password_confirmation' => 'secret-password',
         ])->assertCreated();
 
-        $this->assertSame('user', User::firstWhere('email', 'ana@example.com')->role->name);
+        $this->assertSame(['user'], User::firstWhere('email', 'ana@example.com')->roles->pluck('name')->all());
     }
 
     public function test_login_without_scope_receives_the_default_scope(): void

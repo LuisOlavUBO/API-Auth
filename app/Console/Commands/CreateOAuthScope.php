@@ -2,51 +2,49 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Api;
+use App\Console\Commands\Concerns\ResolvesRoles;
+use App\Models\Application;
 use App\Models\OAuthScope;
 use App\Models\Role;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Signature('oauth:scope {name : Scope name, e.g. geografia:leer} {description : What the scope allows} {--api= : API that owns the scope (required)} {--role=* : Roles that may request it}')]
-#[Description('Create or update an OAuth scope of an API and grant it to roles')]
+#[Signature('oauth:scope {name : Scope name, e.g. geografia:leer} {description : What the scope allows} {--application= : Application that owns the scope (required)} {--role=* : Roles (<application>/<role>) that may request it}')]
+#[Description('Create or update an OAuth scope of an application and grant it to roles')]
 class CreateOAuthScope extends Command
 {
+    use ResolvesRoles;
+
     /**
      * Execute the console command.
      */
     public function handle(): int
     {
-        $api = Api::firstWhere('name', (string) $this->option('api'));
+        $application = Application::firstWhere('name', (string) $this->option('application'));
 
-        if (! $api) {
-            $this->error($this->option('api')
-                ? "Unknown API [{$this->option('api')}]. Create it with oauth:api."
-                : 'The --api option is required.');
+        if (! $application) {
+            $this->error($this->option('application')
+                ? "Unknown application [{$this->option('application')}]. Create it with oauth:application."
+                : 'The --application option is required.');
 
             return self::FAILURE;
         }
 
-        $roleNames = $this->option('role');
-        $roles = Role::whereIn('name', $roleNames)->get();
+        $roles = $this->resolveRoles($this->option('role'));
 
-        $missing = array_diff($roleNames, $roles->pluck('name')->all());
-
-        if ($missing !== []) {
-            $this->error('Unknown role(s): '.implode(', ', $missing));
-
+        if (! $roles) {
             return self::FAILURE;
         }
 
         $scope = OAuthScope::updateOrCreate(
             ['name' => $this->argument('name')],
-            ['api_id' => $api->id, 'description' => $this->argument('description')],
+            ['application_id' => $application->id, 'description' => $this->argument('description')],
         );
 
         $scope->roles()->syncWithoutDetaching($roles->pluck('id'));
 
-        $this->info("Scope [{$scope->name}] of [{$api->name}] saved".($roles->isEmpty() ? '.' : ' for roles: '.$roles->pluck('name')->implode(', ').'.'));
+        $this->info("Scope [{$scope->name}] of [{$application->name}] saved".($roles->isEmpty() ? '.' : ' for roles: '.$roles->map(fn (Role $role) => $role->application->name.'/'.$role->name)->implode(', ').'.'));
 
         return self::SUCCESS;
     }

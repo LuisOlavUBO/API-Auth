@@ -13,7 +13,10 @@ info:
     (`["<client id>", "api-maestros"]`) y solo sirve en esa API. Para validar el token de un usuario
     pueden usar `/introspect` (detecta revocaciones) o verificar la firma localmente con `/public-key`.
 
-    **Scopes:** viven en la base de datos y se asignan por rol. Pedir un scope que el rol no tiene responde
+    **Scopes y roles:** viven en la base de datos. Scopes, roles y clientes pertenecen a una aplicación (satélite,
+    API o monolito) y los roles conceden scopes de cualquier aplicación. Un token de usuario lleva los scopes de
+    los roles del usuario que pertenecen a la aplicación del cliente, sus nombres en la claim `roles` y, en `aud`,
+    el client id y las aplicaciones dueñas de sus scopes. Pedir un scope que esos roles no conceden responde
     `400 invalid_scope`.
 
     **Errores:** las rutas `/api/auth/v1/*` responden los errores en RFC 9457 (`application/problem+json`)
@@ -255,7 +258,9 @@ paths:
         - Con `api`: el token solo sirve en esa API. Sin `scope` trae todos los scopes que los roles del
           cliente le dan en esa API; con `scope`, todos deben pertenecer a ella.
         - API inexistente: `400 invalid_request`. Cliente sin scopes en esa API: `400 invalid_scope`.
-        - Un cliente sin roles no puede pedir ningún scope.
+        - Un cliente sin roles no puede pedir ningún scope. Sin `api` y sin `scope`, el token no trae scopes.
+        - Los roles del cliente pueden ser de cualquier aplicación. La claim `roles` del token lleva los roles
+          del cliente que conceden alguno de sus scopes.
       operationId: tokenCliente
       security: []
       requestBody:
@@ -410,7 +415,7 @@ components:
 
     TokenActivo:
       type: object
-      required: [active, token_type, client_id, sub, scope, aud, exp, user]
+      required: [active, token_type, client_id, sub, scope, aud, roles, exp, user]
       properties:
         active: { type: boolean, const: true }
         token_type: { type: string, const: Bearer }
@@ -424,7 +429,15 @@ components:
         aud:
           type: array
           items: { type: string }
-          description: Client ID y, si el token es para una API, su nombre.
+          description: |
+            Client ID y después las aplicaciones del token: la API pedida en un token de cliente con `api`, o las
+            aplicaciones dueñas de los scopes en un token de usuario (en orden alfabético).
+        roles:
+          type: array
+          items: { type: string }
+          description: |
+            Roles de la claim `roles` del token: los del usuario que pertenecen a la aplicación del cliente, o los
+            del cliente que conceden alguno de sus scopes.
         exp:
           type: [integer, 'null']
           description: Vencimiento (timestamp Unix).

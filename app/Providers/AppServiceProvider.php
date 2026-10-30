@@ -50,13 +50,13 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * Configure grants, scopes and token lifetimes for Passport.
+     * Configure grants, scopes and token lifetimes for Passport. Passport has no default
+     * scopes: a request without "scope" reaches ScopeRepository as an empty list, and the
+     * default scopes of /v1/login (config oauth.default_scopes) are sent by OAuthTokenService.
      */
     protected function configurePassport(): void
     {
         Passport::enablePasswordGrant();
-
-        Passport::defaultScopes(config('oauth.default_scopes'));
 
         Passport::tokensExpireIn(now()->addMinutes(config('oauth.access_token_ttl')));
         Passport::refreshTokensExpireIn(now()->addMinutes(config('oauth.refresh_token_ttl')));

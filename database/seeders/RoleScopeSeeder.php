@@ -2,7 +2,7 @@
 
 namespace Database\Seeders;
 
-use App\Models\Api;
+use App\Models\Application;
 use App\Models\OAuthScope;
 use App\Models\Role;
 use Illuminate\Database\Seeder;
@@ -47,14 +47,17 @@ class RoleScopeSeeder extends Seeder
      */
     public function run(): void
     {
-        $api = Api::firstOrCreate(['name' => 'api-auth'], ['description' => 'Authentication service (this application)']);
+        $application = Application::firstOrCreate(['name' => 'api-auth'], ['description' => 'Authentication service (this application)']);
 
         foreach ($this->scopes as $name => $description) {
-            OAuthScope::firstOrCreate(['name' => $name], ['api_id' => $api->id, 'description' => $description]);
+            OAuthScope::firstOrCreate(['name' => $name], ['application_id' => $application->id, 'description' => $description]);
         }
 
         foreach ($this->roles as $name => $definition) {
-            $role = Role::firstOrCreate(['name' => $name], ['description' => $definition['description']]);
+            $role = Role::firstOrCreate(
+                ['application_id' => $application->id, 'name' => $name],
+                ['description' => $definition['description']],
+            );
 
             $role->oauthScopes()->syncWithoutDetaching(
                 OAuthScope::whereIn('name', $definition['scopes'])->pluck('id')

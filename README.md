@@ -19,7 +19,7 @@ php artisan key:generate
 php artisan migrate
 php artisan db:seed --class=RoleScopeSeeder
 php artisan passport:keys
-php artisan passport:client --password --name="Auth Service Password Client" --provider=users
+php artisan oauth:client "Auth Service Password Client" --application=api-auth --type=password
 ```
 
 Copia el `Client ID` y `Client Secret` del último comando a `.env`:
@@ -173,14 +173,18 @@ curl http://localhost:8000/api/auth/v1/me -H "Accept: application/json" -H "Auth
 
 ## Integrar otro microservicio
 
-1. Crear un cliente para el servicio y darle roles (sin roles no puede pedir ningún scope):
+1. Registrar la aplicación del servicio, crear su cliente y darle roles (sin roles no puede pedir ningún scope). Todo cliente pertenece a una aplicación, por eso se crea con `oauth:client` y no con `passport:client`:
 
    ```bash
-   php artisan passport:client --client --name="orders-service"
+   php artisan oauth:application orders-service "Servicio de órdenes"
    ```
 
    ```bash
-   php artisan oauth:client-role orders-service introspector
+   php artisan oauth:client orders-service --application=orders-service --type=client-credentials
+   ```
+
+   ```bash
+   php artisan oauth:client-role orders-service api-auth/introspector
    ```
 
 2. El servicio obtiene su token:
@@ -203,26 +207,29 @@ curl http://localhost:8000/api/auth/v1/me -H "Accept: application/json" -H "Auth
 
 Los scopes viven en base de datos y se asignan **por rol**:
 
-- `apis`: las APIs o backends que exponen endpoints protegidos (`api-auth`, `api-maestros`, ...). Un sistema que solo consume no va aquí.
-- `oauth_scopes`: catálogo de scopes que existen (`user:read`, `geografia:leer`, ...). Cada scope pertenece a una API (`api_id`, obligatorio). El nombre sigue la convención `dominio:permiso` y es único en toda la organización.
-- `roles` + `oauth_scope_role`: qué scopes puede pedir cada rol.
-- `users.role_id`: rol del usuario (uno). Los usuarios nuevos reciben `OAUTH_DEFAULT_ROLE` (por defecto `user`).
-- `oauth_client_role`: roles de cada cliente `client_credentials` (uno o varios, p. ej. uno por API que consume).
+Una **aplicación** es un satélite, una API o un monolito. Los scopes, los roles y los clientes viven en base de datos y pertenecen a una aplicación:
 
-Carga inicial (API `api-auth`; roles `user`, `admin` e `introspector`; scopes `user:read`, `user:write`, `introspect`):
+- `applications`: las aplicaciones (`api-auth`, `api-maestros`, `portal`, ...). Cada una usa solo lo que necesita: scopes si valida accesos, roles si tiene usuarios o los ofrece a quien la consume, clientes si pide tokens.
+- `oauth_scopes`: catálogo de scopes que existen (`user:read`, `geografia:leer`, ...). Cada scope pertenece a una aplicación (`application_id`, obligatorio). El nombre sigue la convención `dominio:permiso` y es único en toda la organización.
+- `roles` + `oauth_scope_role`: qué scopes concede cada rol, de cualquier aplicación. Un rol pertenece a una aplicación y su nombre es único dentro de ella; en los comandos se escribe `<aplicación>/<rol>`.
+- `role_user`: roles de cada usuario (varios, en una o varias aplicaciones). Los usuarios nuevos reciben el rol `OAUTH_DEFAULT_ROLE` (por defecto `user`) de la aplicación `OAUTH_APPLICATION` (por defecto `api-auth`).
+- `oauth_clients.application_id`: la aplicación de cada cliente (obligatorio). Un cliente de `client_credentials` puede tener roles de cualquier aplicación (`oauth_client_role`), normalmente los que ofrece cada API que consume.
+
+Carga inicial (aplicación `api-auth`; roles `user`, `admin` e `introspector`; scopes `user:read`, `user:write`, `introspect`):
 
 ```bash
 php artisan db:seed --class=RoleScopeSeeder
 ```
 
-Al hacer login, [app/Services/ScopeRepository.php](app/Services/ScopeRepository.php) filtra los scopes contra el rol del usuario:
+Al emitir un token de usuario, [app/Services/ScopeRepository.php](app/Services/ScopeRepository.php) usa solo los roles del usuario que pertenecen a la aplicación del cliente que lo obtiene:
 
-- Si no se manda `scope`, se pide el scope por defecto (`user:read`).
-- Pedir un scope que el rol no tiene (o `*`, o uno inexistente) responde `400 invalid_scope`.
-- En `/refresh` se quitan los scopes que el rol ya no tenga, así los cambios de rol se aplican sin forzar un nuevo login.
-- Un usuario sin rol obtiene un token sin scopes.
+- Sin `scope`, el token trae todos los scopes de esos roles. `POST /api/auth/v1/login` es la excepción: sin `scope` pide el scope por defecto (`user:read`).
+- Pedir un scope que esos roles no conceden (o `*`, o uno inexistente) responde `400 invalid_scope`.
+- Un usuario sin roles en la aplicación obtiene un token sin scopes.
+- En `/refresh` se quitan los scopes que los roles ya no conceden y nunca se agregan; los scopes nuevos llegan en el siguiente login. La claim `roles` se recalcula.
+- La claim `roles` lleva los nombres de esos roles y `aud` lleva el client id y, en orden alfabético, las aplicaciones dueñas de los scopes.
 
-Los tokens de cliente (`client_credentials`) siguen las mismas reglas con la unión de los scopes de todos los roles del cliente. **Un cliente sin roles no puede pedir ningún scope.**
+Los tokens de cliente (`client_credentials`) usan la unión de los scopes de todos los roles del cliente y solo los que se piden. **Sin `scope` y sin `api`, el token no trae scopes.** Su claim `roles` lleva los roles del cliente que conceden alguno de los scopes del token.
 
 ### Tokens por API
 
@@ -237,45 +244,55 @@ El token nombra la API en su `aud`, después del client id: `"aud": ["<client id
 
 ### Registrar un sistema que consume varias APIs
 
-Crea un rol por perfil de acceso de cada API y asigna al sistema los que necesite:
+Cada API ofrece un rol por perfil de acceso y se asignan al cliente del sistema los que necesite:
 
 ```bash
-php artisan oauth:role maestros-lector "Lectura de API-Maestros"
+php artisan oauth:application api-maestros "Datos maestros"
 ```
 
 ```bash
-php artisan oauth:scope geografia:leer "Leer geografía" --api=api-maestros --role=maestros-lector
+php artisan oauth:role maestros-lector "Lectura de API-Maestros" --application=api-maestros
 ```
 
 ```bash
-php artisan passport:client --client --name="sistema-x"
+php artisan oauth:scope geografia:leer "Leer geografía" --application=api-maestros --role=api-maestros/maestros-lector
 ```
 
 ```bash
-php artisan oauth:client-role sistema-x maestros-lector matricula-lector
+php artisan oauth:application sistema-x "Sistema X"
+```
+
+```bash
+php artisan oauth:client sistema-x --application=sistema-x --type=client-credentials
+```
+
+```bash
+php artisan oauth:client-role sistema-x api-maestros/maestros-lector
 ```
 
 ```bash
 php artisan oauth:client-scopes sistema-x
 ```
 
-`oauth:scope` exige que la API (`--api`) y los roles (`--role`) existan. Volver a ejecutarlo con otra `--api` mueve el scope sin cambiar su nombre. `oauth:client-role` agrega roles; con `--sync` reemplaza los anteriores. `oauth:client-scopes` muestra los scopes agrupados por API.
+`oauth:scope` exige que la aplicación (`--application`) y los roles (`--role`, como `<aplicación>/<rol>`) existan. Volver a ejecutarlo con otra `--application` mueve el scope sin cambiar su nombre. `oauth:client-role` agrega roles de cualquier aplicación; con `--sync` reemplaza los anteriores. `oauth:client-scopes` muestra la aplicación del cliente y sus scopes agrupados por aplicación. `oauth:client-application` mueve un cliente a otra aplicación y `oauth:role-scopes <aplicación>` lista los scopes que concede cada rol de una aplicación, para revisar que solo concede lo que su aplicación usa.
 
 ### Agregar una API nueva
 
 No hace falta tocar código ni desplegar este servicio:
 
 ```bash
-php artisan oauth:api api-matricula "Matrícula de alumnos"
+php artisan oauth:application api-matricula "Matrícula de alumnos"
 ```
 
 ```bash
-php artisan oauth:scope matricula:leer "Leer matrículas" --api=api-matricula --role=admin
+php artisan oauth:scope matricula:leer "Leer matrículas" --application=api-matricula --role=api-auth/admin
 ```
 
 ```bash
-php artisan oauth:assign-role ana@example.com admin
+php artisan oauth:assign-role ana@example.com api-auth/admin
 ```
+
+`oauth:assign-role` agrega el rol sin quitar los demás del usuario; con `--sync` reemplaza solo los que tiene en la aplicación de ese rol.
 
 En la API nueva, exige el scope en la ruta:
 
