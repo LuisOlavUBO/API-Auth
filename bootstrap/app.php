@@ -16,7 +16,9 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: ApiPrefix::BASE,
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // There is no web login to send guests to, and without "Accept: application/json"
+        // the default tries route('login') and fails with a 500 instead of a 401.
+        $middleware->redirectGuestsTo(fn () => null);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // api/* answers errors in RFC 9457 with the stable code in "error" (OAuthTokenException included,

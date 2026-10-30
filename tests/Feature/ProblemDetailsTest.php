@@ -53,6 +53,12 @@ class ProblemDetailsTest extends TestCase
         $this->assertProblem($this->getJson('/api/auth/v1/me'), 401, 'NO_AUTENTICADO');
     }
 
+    public function test_requests_without_a_token_and_without_accept_still_get_a_problem(): void
+    {
+        $this->assertProblem($this->get('/api/auth/v1/me'), 401, 'NO_AUTENTICADO');
+        $this->assertProblem($this->withToken('invalid.token.value')->get('/api/auth/v1/me'), 401, 'NO_AUTENTICADO');
+    }
+
     public function test_tokens_without_the_required_scope_get_a_problem(): void
     {
         $token = $this->postJson('/api/auth/v1/login', [
