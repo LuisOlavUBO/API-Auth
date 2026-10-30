@@ -18,11 +18,11 @@ El sistema SHALL permitir crear una cuenta en `POST /api/auth/v1/register` con `
 - **THEN** el sistema responde 422 indicando los errores de `name`, `email` y `password`
 
 ### Requirement: Rol por defecto al registrarse
-Todo usuario creado por registro SHALL recibir el rol configurado como rol por defecto (por omisión, `user`).
+Todo usuario creado por registro SHALL recibir el rol configurado como rol por defecto (por omisión, `user`) de la aplicación `api-auth`.
 
 #### Scenario: El usuario registrado tiene el rol por defecto
 - **WHEN** una persona se registra correctamente
-- **THEN** su cuenta queda asociada al rol `user`
+- **THEN** su cuenta queda asociada al rol `user` de `api-auth`
 
 ### Requirement: Login con email y contraseña
 El sistema SHALL emitir un par de tokens (acceso y refresh) en `POST /api/auth/v1/login` a cambio de `email` y `password` válidos, con un `scope` opcional separado por espacios. Las credenciales incorrectas MUST responder 401 con el código `invalid_grant`. El secreto del cliente OAuth usado internamente MUST NOT exponerse a quien llama.

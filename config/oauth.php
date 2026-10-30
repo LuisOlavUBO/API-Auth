@@ -9,7 +9,8 @@ return [
     |
     | Client used internally by the /api/auth/v1 endpoints (register, login,
     | refresh) to issue tokens through Passport's password grant. Create it
-    | with "php artisan passport:client --password" and copy the values here.
+    | with "php artisan oauth:client <name> --application=api-auth --type=password"
+    | and copy the values here.
     |
     */
 
