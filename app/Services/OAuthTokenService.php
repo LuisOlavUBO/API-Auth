@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Exceptions\OAuthTokenException;
+use App\Models\User;
 use GuzzleHttp\Psr7\Response as Psr7Response;
 use GuzzleHttp\Psr7\ServerRequest;
 use Laravel\Passport\Passport;
@@ -126,6 +127,14 @@ class OAuthTokenService
     {
         Passport::token()->newQuery()->whereKey($tokenId)->update(['revoked' => true]);
         Passport::refreshToken()->newQuery()->where('access_token_id', $tokenId)->update(['revoked' => true]);
+    }
+
+    /**
+     * Revoke every access token the user holds and their refresh tokens (all devices).
+     */
+    public function revokeAllFor(User $user): void
+    {
+        $user->tokens()->where('revoked', false)->pluck('id')->each(fn (string $id) => $this->revoke($id));
     }
 
     /**

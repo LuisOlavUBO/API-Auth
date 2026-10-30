@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\ApiPrefix;
 use Illuminate\Support\Str;
 
 return [
@@ -138,12 +139,12 @@ return [
     |--------------------------------------------------------------------------
     |
     | The session cookie path determines the path for which the cookie will
-    | be regarded as available. Typically, this will be the root path of
-    | your application, but you're free to change this when necessary.
+    | be regarded as available. Here it is the API prefix, so the other APIs
+    | that share the host do not receive the IAM session cookie.
     |
     */
 
-    'path' => env('SESSION_PATH', '/'),
+    'path' => env('SESSION_PATH', '/'.ApiPrefix::BASE),
 
     /*
     |--------------------------------------------------------------------------

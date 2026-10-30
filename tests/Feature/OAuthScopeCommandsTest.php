@@ -179,6 +179,40 @@ class OAuthScopeCommandsTest extends TestCase
         $this->assertSame(0, Passport::client()->newQuery()->where('name', 'portal-backend')->count());
     }
 
+    public function test_client_command_creates_an_authorization_code_client(): void
+    {
+        $portal = Application::factory()->create(['name' => 'portal']);
+
+        $this->artisan('oauth:client', [
+            'name' => 'portal-web',
+            '--application' => 'portal',
+            '--type' => 'authorization-code',
+            '--redirect' => ['https://portal.ubo.cl/callback', 'http://localhost:8080/callback'],
+        ])->expectsOutputToContain('Client secret:')->assertSuccessful();
+
+        $client = Passport::client()->newQuery()->where('name', 'portal-web')->first();
+
+        $this->assertSame($portal->id, (int) $client->application_id);
+        $this->assertTrue($client->confidential());
+        $this->assertTrue($client->hasGrantType('authorization_code'));
+        $this->assertTrue($client->hasGrantType('refresh_token'));
+        $this->assertFalse($client->hasGrantType('client_credentials'));
+        $this->assertSame(['https://portal.ubo.cl/callback', 'http://localhost:8080/callback'], $client->redirect_uris);
+        $this->assertTrue($client->skipsAuthorization(User::factory()->make(), []));
+    }
+
+    public function test_client_command_rejects_an_authorization_code_client_without_a_valid_redirect(): void
+    {
+        Application::factory()->create(['name' => 'portal']);
+        $options = ['name' => 'portal-web', '--application' => 'portal', '--type' => 'authorization-code'];
+
+        $this->artisan('oauth:client', $options)->assertFailed();
+        $this->artisan('oauth:client', [...$options, '--redirect' => ['/callback']])->assertFailed();
+        $this->artisan('oauth:client', [...$options, '--redirect' => ['https://portal.ubo.cl/callback', 'callback']])->assertFailed();
+
+        $this->assertSame(0, Passport::client()->newQuery()->where('name', 'portal-web')->count());
+    }
+
     public function test_client_application_command_moves_a_client(): void
     {
         $maestros = Application::factory()->create(['name' => 'api-maestros']);

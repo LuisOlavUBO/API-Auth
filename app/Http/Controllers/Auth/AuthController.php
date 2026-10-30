@@ -92,8 +92,7 @@ class AuthController extends Controller
      */
     public function logoutAll(Request $request): JsonResponse
     {
-        $request->user()->tokens()->where('revoked', false)->pluck('id')
-            ->each(fn (string $id) => $this->tokens->revoke($id));
+        $this->tokens->revokeAllFor($request->user());
 
         return response()->json(['message' => 'All sessions closed.']);
     }

@@ -8,7 +8,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
-use Laravel\Passport\Client;
 use Laravel\Passport\Passport;
 
 /**
@@ -43,18 +42,23 @@ class Application extends Model
      * Passport's ClientRepository cannot be used: it inserts without application_id,
      * which is required. The attributes are the same ones it sets.
      *
-     * @param  'client-credentials'|'password'  $type
+     * @param  'client-credentials'|'password'|'authorization-code'  $type
+     * @param  string[]  $redirectUris  Where 'authorization-code' clients may receive the code
      */
-    public function createClient(string $name, string $type = 'client-credentials'): Client
+    public function createClient(string $name, string $type = 'client-credentials', array $redirectUris = []): Client
     {
-        $grantTypes = $type === 'password' ? ['password', 'refresh_token'] : ['client_credentials'];
+        $grantTypes = match ($type) {
+            'password' => ['password', 'refresh_token'],
+            'authorization-code' => ['authorization_code', 'refresh_token'],
+            default => ['client_credentials'],
+        };
 
         return Passport::client()->newQuery()->forceCreate([
             'application_id' => $this->id,
             'name' => $name,
             'secret' => Str::random(40),
-            'provider' => $type === 'password' ? 'users' : null,
-            'redirect_uris' => [],
+            'provider' => $type === 'client-credentials' ? null : 'users',
+            'redirect_uris' => $type === 'authorization-code' ? $redirectUris : [],
             'grant_types' => $grantTypes,
             'revoked' => false,
         ]);

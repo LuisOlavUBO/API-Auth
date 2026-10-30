@@ -58,13 +58,18 @@ class DocsTest extends TestCase
     }
 
     /**
-     * Passport's own routes are off: the token endpoint lives under the API prefix only.
+     * Passport's own routes are off: only the token and authorize endpoints are published, under the API prefix.
      */
-    public function test_only_the_prefixed_token_endpoint_is_exposed(): void
+    public function test_only_the_prefixed_token_and_authorize_endpoints_are_exposed(): void
     {
         $uris = collect(Route::getRoutes()->getRoutes())->map(fn ($route) => $route->uri());
 
         $this->assertContains('api/auth/oauth/token', $uris);
+        $this->assertContains('api/auth/oauth/authorize', $uris);
         $this->assertEmpty($uris->filter(fn (string $uri) => str_starts_with($uri, 'oauth/')));
+        $this->assertEqualsCanonicalizing(
+            ['api/auth/oauth/token', 'api/auth/oauth/authorize'],
+            $uris->filter(fn (string $uri) => str_starts_with($uri, 'api/auth/oauth/'))->unique()->values()->all(),
+        );
     }
 }

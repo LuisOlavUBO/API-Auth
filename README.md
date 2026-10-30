@@ -110,7 +110,7 @@ El compose fuerza `APP_ENV=production`, `APP_DEBUG=false` y `LOG_CHANNEL=stderr`
 | POST | `/introspect` | Bearer (cliente, scope `introspect`) | `token` → `{ active, sub, client_id, scope, exp, user }` |
 | GET | `/public-key` | — | Clave pública PEM para verificar JWT localmente |
 
-Además `POST /api/auth/oauth/token` es el endpoint estándar OAuth2 de Passport, usado por los microservicios para el grant `client_credentials`. Es la única ruta de Passport registrada: las demás (`/oauth/authorize`, `/oauth/device`, `/oauth/token/refresh`) están apagadas con `Passport::ignoreRoutes()` porque requieren un login web que esta API no tiene. `GET /api/auth/v1/salud` responde `{"estado": "OK", "base_datos": "OK"}` o `503` si la base no responde (misma forma que en API-Maestros). `/up` solo indica que Laravel arrancó.
+Además `POST /api/auth/oauth/token` es el endpoint estándar OAuth2 de Passport, usado por los microservicios para el grant `client_credentials`. Junto con `GET /api/auth/oauth/authorize` del [login central](#login-central-sso-de-los-satélites-monolito) son las únicas rutas de Passport registradas: las demás (aprobar o rechazar, `/oauth/device`, `/oauth/token/refresh`) están apagadas con `Passport::ignoreRoutes()`. El login central agrega las páginas web `GET/POST /api/auth/login` y `GET/POST /api/auth/logout`, que responden HTML y no problem+json. `GET /api/auth/v1/salud` responde `{"estado": "OK", "base_datos": "OK"}` o `503` si la base no responde (misma forma que en API-Maestros). `/up` solo indica que Laravel arrancó.
 
 Los endpoints públicos de `register`/`login`/`refresh` tienen rate limit de 10 req/min por email+IP.
 
@@ -169,7 +169,48 @@ curl http://localhost:8000/api/auth/v1/me -H "Accept: application/json" -H "Auth
 
 ### Colección Bruno
 
-[docs/bruno](docs/bruno) es una colección de [Bruno](https://www.usebruno.com/) con todos los endpoints, documentados y con tests. Se abre con *Open Collection* sobre esa carpeta; se elige el entorno `Local` o `Servidor` y se completan `email`, `password`, `client_id` y `client_secret` (las secretas quedan solo en el equipo). **Iniciar sesión** guarda `accessToken`/`refreshToken` y **Token de cliente (introspect)** guarda `clientToken` para las demás solicitudes.
+[docs/bruno](docs/bruno) es una colección de [Bruno](https://www.usebruno.com/) con todos los endpoints, documentados y con tests. Se abre con *Open Collection* sobre esa carpeta; se elige el entorno `Local` o `Servidor` y se completan `email`, `password`, `client_id` y `client_secret` (las secretas quedan solo en el equipo); para la solicitud OAuth2 de **Login central**, también `callback_url`, `code_client_id` y `code_client_secret`. **Iniciar sesión** guarda `accessToken`/`refreshToken` y **Token de cliente (introspect)** guarda `clientToken` para las demás solicitudes.
+
+## Login central (SSO de los satélites monolito)
+
+La contraseña solo se escribe en IAM. Un satélite monolito manda el navegador de la persona a `GET /api/auth/oauth/authorize` (Authorization Code con PKCE `S256`, sin pantalla de consentimiento); IAM muestra su login en `/api/auth/login` (Blade, dentro de este servicio), guarda la sesión y devuelve un `code` a la `redirect_uri` del satélite, que lo canjea en `POST /api/auth/oauth/token` con su `code_verifier` y las credenciales de su cliente. El token trae los roles y scopes que la persona tiene en la aplicación del cliente. Las SPA, CORS y los clientes públicos quedan para otra entrega.
+
+1. Crear el cliente de código de autorización del satélite (confidencial, con al menos una `--redirect` absoluta; se repite para varias). La aplicación y los roles de la persona se crean como se explica en [Scopes y roles](#scopes-y-roles):
+
+   ```bash
+   php artisan oauth:application portal "Portal de la UBO"
+   ```
+
+   ```bash
+   php artisan oauth:client portal-web --application=portal --type=authorization-code --redirect=https://portal.ubo.cl/callback
+   ```
+
+2. El satélite genera un `code_verifier` y un `state`, y manda a la persona a:
+
+   ```
+   GET /api/auth/oauth/authorize?response_type=code&client_id=<id>&redirect_uri=https://portal.ubo.cl/callback&state=<state>&code_challenge=<base64url(sha256(code_verifier))>&code_challenge_method=S256
+   ```
+
+   - Sin `code_challenge` o con `plain` responde `400` antes de pedir la clave. Una `redirect_uri` que el cliente no tiene registrada responde un error y no redirige.
+   - Una persona sin ningún rol en la aplicación del cliente ve "No tienes acceso a este sistema, contacta a soporte" (403): no recibe código ni vuelve al satélite.
+   - `prompt=login` cierra la sesión de IAM y vuelve a pedir la clave, aunque hubiera sesión. Afecta a la sesión de IAM completa: los tokens de los otros satélites siguen hasta que venzan.
+
+3. Con el `code` recibido, el satélite pide sus tokens:
+
+   ```bash
+   curl -X POST http://localhost:8000/api/auth/oauth/token -d "grant_type=authorization_code&client_id=<id>&client_secret=<secret>&redirect_uri=https://portal.ubo.cl/callback&code_verifier=<code_verifier>&code=<code>"
+   ```
+
+4. Logout central: el satélite manda a `GET /api/auth/logout?client_id=<id>&return=https://portal.ubo.cl/` (el `return` debe tener el mismo origen que una redirección registrada del cliente). Cierra la sesión de IAM, revoca todos los tokens de la persona en todos los satélites y vuelve a `return`; si no coincide, muestra "Sesión cerrada". La página de IAM tiene su propio botón (`POST /api/auth/logout`).
+
+**Tiempos:** la sesión de IAM dura 120 minutos sin uso (`SESSION_LIFETIME`) y su cookie va acotada a `/api/auth`, `HttpOnly` y `SameSite=Lax`. El refresh token vence a los 120 minutos de inactividad (`PASSPORT_REFRESH_TOKEN_TTL`, se renueva con cada uso); esto también vale para los tokens de `/api/auth/v1/login`.
+
+**Variables de despliegue** (en el `.env.prod`):
+
+- `SESSION_SECURE_COOKIE=true` (el compose de producción ya lo fija): la cookie de sesión solo viaja por HTTPS.
+- `TRUSTED_PROXIES`: proxies cuyas cabeceras `X-Forwarded-*` se aceptan, para que los límites de solicitudes vean la IP real. Vacío no confía en nadie; `*` confía en todos (solo si el servicio únicamente es alcanzable por el proxy; si no, cualquiera puede falsificar su IP); o una lista de IP o redes separada por comas, p. ej. `172.18.0.0/16`.
+- `OAUTH_TOKEN_RATE_LIMIT`: solicitudes por minuto a `/api/auth/oauth/token` por `client_id` (120 por omisión).
+- Si estaban definidas, quitar `SESSION_PATH` y bajar `PASSPORT_REFRESH_TOKEN_TTL` a 120.
 
 ## Integrar otro microservicio
 
@@ -306,7 +347,7 @@ Si la API valida el JWT localmente, debe revisar que el claim `scopes` contenga 
 
 ## Configuración de expiración (minutos)
 
-`PASSPORT_ACCESS_TOKEN_TTL` (60), `PASSPORT_REFRESH_TOKEN_TTL` (43200 = 30 días), `PASSPORT_CLIENT_TOKEN_TTL` (60).
+`PASSPORT_ACCESS_TOKEN_TTL` (60), `PASSPORT_REFRESH_TOKEN_TTL` (120: es el plazo de inactividad, porque el refresh se renueva con cada uso), `PASSPORT_CLIENT_TOKEN_TTL` (60). La sesión web de IAM usa `SESSION_LIFETIME` (120).
 
 Limpiar tokens expirados/revocados periódicamente:
 
@@ -362,3 +403,4 @@ php artisan test
 - [app/Exceptions/OAuthTokenException.php](app/Exceptions/OAuthTokenException.php) — fallos de login y refresh: código OAuth, título y qué se registra en el log.
 - [config/ubo-common.php](config/ubo-common.php) — módulos de UBO.Common: Tracing, Problems, Health (`/api/auth/v1/salud`) y SqlServer.
 - [routes/api.php](routes/api.php) — rutas.
+- [routes/web.php](routes/web.php) — login, logout y autorización del [login central](#login-central-sso-de-los-satélites-monolito); [LoginController](app/Http/Controllers/Auth/LoginController.php), [LogoutController](app/Http/Controllers/Auth/LogoutController.php), los middleware [RequirePkce](app/Http/Middleware/RequirePkce.php) y [RequireRolesInClientApplication](app/Http/Middleware/RequireRolesInClientApplication.php) y las vistas en [resources/views/auth](resources/views/auth).

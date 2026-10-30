@@ -1,0 +1,16 @@
+meta {
+  name: Login central
+  seq: 3
+}
+
+docs {
+  Login central de IAM para satélites monolito: Authorization Code con PKCE (`S256`). La contraseña solo se escribe en la página de login de IAM.
+
+  Crear antes un cliente de código de autorización con una redirección que coincida con `{{callback_url}}`, y un usuario con algún rol en la aplicación del cliente:
+
+  ```bash
+  php artisan oauth:client portal-web --application=portal --type=authorization-code --redirect=http://localhost:8080/callback
+  ```
+
+  Completar `code_client_id` y `code_client_secret` en el entorno.
+}
