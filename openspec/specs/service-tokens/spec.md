@@ -7,11 +7,11 @@ Permite que otros sistemas (satélites y microservicios) obtengan tokens propios
 ## Requirements
 
 ### Requirement: Endpoint OAuth2 de emisión de tokens
-El sistema SHALL exponer el endpoint OAuth2 estándar en `POST /api/auth/oauth/token`, sin versión, con límite de solicitudes. Es el único endpoint OAuth2 publicado: autorización, dispositivos y demás rutas OAuth MUST NOT estar disponibles, ni fuera del prefijo `/api/auth`.
+El sistema SHALL exponer el endpoint OAuth2 estándar de token en `POST /api/auth/oauth/token` y el de autorización en `GET /api/auth/oauth/authorize`, sin versión. Son los únicos endpoints OAuth2 publicados: la aprobación y el rechazo de autorizaciones, los dispositivos y demás rutas OAuth MUST NOT estar disponibles, ni fuera del prefijo `/api/auth`.
 
 #### Scenario: Solo existe el endpoint de token con prefijo
 - **WHEN** se inspeccionan las rutas publicadas
-- **THEN** existe `api/auth/oauth/token` y no existe ninguna ruta que empiece por `oauth/`
+- **THEN** existen `api/auth/oauth/token` y `api/auth/oauth/authorize`, y no existe ninguna otra ruta que empiece por `oauth/` ni por `api/auth/oauth/`
 
 ### Requirement: Tokens de cliente con client credentials
 Un cliente OAuth SHALL obtener un access token con `grant_type=client_credentials`, su `client_id` y su `client_secret`, y un `scope` opcional. Los scopes se limitan a los que conceden sus roles. Un cliente que no solicita scopes recibe un token sin scopes. Los tokens de cliente vencen por defecto a los 60 minutos (configurable).
@@ -90,3 +90,14 @@ Un cliente OAuth SHALL poder recibir roles de cualquier aplicación, no solo de 
 #### Scenario: Cliente con roles de varias aplicaciones
 - **WHEN** un cliente de `portal` tiene el rol `lector` de `api-maestros` y el rol `lector` de `api-matricula`
 - **THEN** puede pedir un token con `api=api-maestros` y otro con `api=api-matricula`, cada uno con los scopes de su API
+
+### Requirement: Límite de solicitudes del endpoint de token
+El endpoint de token SHALL limitar las solicitudes por minuto por `client_id` (o por IP cuando no viene), con un máximo configurable. Al superarlo MUST responder 429 con la cabecera `Retry-After`.
+
+#### Scenario: Un cliente supera el límite
+- **WHEN** un cliente envía más solicitudes por minuto al endpoint de token que el máximo configurado
+- **THEN** responde 429 con la cabecera `Retry-After`
+
+#### Scenario: Otro cliente no se ve afectado
+- **WHEN** un cliente superó el límite y otro cliente pide un token en el mismo minuto, desde la misma IP
+- **THEN** el segundo recibe su token con normalidad
