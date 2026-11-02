@@ -32,6 +32,7 @@ services:
             APP_DEBUG: "false"
             LOG_CHANNEL: stderr
             RUN_MIGRATIONS: "false"
+            SESSION_SECURE_COOKIE: "true"
         volumes:
             - ./storage/oauth-private.key:/run/keys/oauth-private.key:ro
             - ./storage/oauth-public.key:/run/keys/oauth-public.key:ro

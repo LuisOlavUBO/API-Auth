@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
+use App\Models\Application;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\OAuthTokenService;
@@ -22,8 +23,15 @@ class AuthController extends Controller
     public function register(RegisterRequest $request): JsonResponse
     {
         $user = new User($request->validated());
-        $user->role()->associate(Role::firstWhere('name', config('oauth.default_role')));
         $user->save();
+        $defaultRoleId = Role::where([
+            'application_id' => Application::where('name', config('oauth.application'))->value('id'),
+            'name' => config('oauth.default_role'),
+        ])->value('id');
+
+        if ($defaultRoleId) {
+            $user->roles()->attach($defaultRoleId);
+        }
 
         $token = $this->tokens->issueForCredentials($user->email, $request->input('password'));
 
@@ -84,8 +92,7 @@ class AuthController extends Controller
      */
     public function logoutAll(Request $request): JsonResponse
     {
-        $request->user()->tokens()->where('revoked', false)->pluck('id')
-            ->each(fn (string $id) => $this->tokens->revoke($id));
+        $this->tokens->revokeAllFor($request->user());
 
         return response()->json(['message' => 'All sessions closed.']);
     }

@@ -37,7 +37,7 @@ Route::prefix('v1')->group(function () {
 // others). Not versioned: it is OAuth2's standard endpoint, and it keeps OAuth2's error format
 // because Passport renders its own exceptions before ProblemRenderer is asked.
 Route::post('oauth/token', [AccessTokenController::class, 'issueToken'])
-    ->middleware('throttle')
+    ->middleware('throttle:oauth-token')
     ->name('passport.token');
 
 // Docs: Swagger UI over docs/openapi/openapi.yaml, without a token.

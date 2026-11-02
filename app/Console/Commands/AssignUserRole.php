@@ -2,33 +2,44 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Role;
+use App\Console\Commands\Concerns\ResolvesRoles;
 use App\Models\User;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Signature('oauth:assign-role {email : User email} {role : Role name}')]
+#[Signature('oauth:assign-role {email : User email} {role : Role as <application>/<role>} {--sync : Replace the roles the user has in the application of the role}')]
 #[Description('Assign a role (and therefore its scopes) to a user')]
 class AssignUserRole extends Command
 {
+    use ResolvesRoles;
+
     /**
      * Execute the console command.
      */
     public function handle(): int
     {
         $user = User::firstWhere('email', $this->argument('email'));
-        $role = Role::firstWhere('name', $this->argument('role'));
 
-        if (! $user || ! $role) {
-            $this->error($user ? 'Role not found.' : 'User not found.');
+        if (! $user) {
+            $this->error('User not found.');
 
             return self::FAILURE;
         }
 
-        $user->role()->associate($role)->save();
+        $role = $this->resolveRoles([$this->argument('role')])?->first();
 
-        $this->info("User [{$user->email}] now has role [{$role->name}]. Applies to new logins and refreshes.");
+        if (! $role) {
+            return self::FAILURE;
+        }
+
+        if ($this->option('sync')) {
+            $user->roles()->detach($user->rolesIn($role->application_id)->pluck('id'));
+        }
+
+        $user->roles()->syncWithoutDetaching([$role->id]);
+
+        $this->info("User [{$user->email}] now has role [{$this->argument('role')}]. Applies to new logins and refreshes.");
 
         return self::SUCCESS;
     }

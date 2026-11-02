@@ -18,11 +18,11 @@ El sistema SHALL permitir crear una cuenta en `POST /api/auth/v1/register` con `
 - **THEN** el sistema responde 422 indicando los errores de `name`, `email` y `password`
 
 ### Requirement: Rol por defecto al registrarse
-Todo usuario creado por registro SHALL recibir el rol configurado como rol por defecto (por omisión, `user`).
+Todo usuario creado por registro SHALL recibir el rol configurado como rol por defecto (por omisión, `user`) de la aplicación `api-auth`.
 
 #### Scenario: El usuario registrado tiene el rol por defecto
 - **WHEN** una persona se registra correctamente
-- **THEN** su cuenta queda asociada al rol `user`
+- **THEN** su cuenta queda asociada al rol `user` de `api-auth`
 
 ### Requirement: Login con email y contraseña
 El sistema SHALL emitir un par de tokens (acceso y refresh) en `POST /api/auth/v1/login` a cambio de `email` y `password` válidos, con un `scope` opcional separado por espacios. Las credenciales incorrectas MUST responder 401 con el código `invalid_grant`. El secreto del cliente OAuth usado internamente MUST NOT exponerse a quien llama.
@@ -83,8 +83,12 @@ Los endpoints de registro, login y refresh SHALL aceptar como máximo 10 solicit
 - **THEN** el undécimo responde 429 con la cabecera `Retry-After`
 
 ### Requirement: Vigencia de los tokens
-Los access tokens de usuario SHALL vencer por defecto a los 60 minutos y los refresh tokens a los 30 días. Ambos plazos MUST poder configurarse por entorno. Los access tokens SHALL ser JWT firmados con la clave privada del servicio.
+Los access tokens de usuario SHALL vencer por defecto a los 60 minutos y los refresh tokens a los 120 minutos, que se renuevan cada vez que se usan y por eso equivalen a un plazo de inactividad. Ambos plazos MUST poder configurarse por entorno. Los access tokens SHALL ser JWT firmados con la clave privada del servicio.
 
 #### Scenario: Vigencia por defecto
 - **WHEN** se emite un par de tokens sin configuración de vigencia propia
-- **THEN** `expires_in` corresponde a 60 minutos y el refresh token es válido durante 30 días
+- **THEN** `expires_in` corresponde a 60 minutos y el refresh token es válido durante 120 minutos
+
+#### Scenario: El refresh se renueva con el uso
+- **WHEN** se renueva la sesión con un refresh token vigente
+- **THEN** el refresh token nuevo vuelve a ser válido durante 120 minutos

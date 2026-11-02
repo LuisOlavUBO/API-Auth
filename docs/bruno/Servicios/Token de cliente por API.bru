@@ -35,6 +35,7 @@ docs {
   - Sin `scope`: trae todos los scopes que los roles del cliente le dan en esa API.
   - Con `scope` (campo desactivado en la colección): todos deben pertenecer a esa API.
   - API inexistente: `400 invalid_request`. Cliente sin scopes en esa API: `400 invalid_scope`.
+  - Los roles del cliente pueden ser de cualquier aplicación (p. ej. el rol `lector` que ofrece `api-maestros`). La claim `roles` del token lleva los roles del cliente que conceden alguno de sus scopes. Sin `api` ni `scope`, el token no trae scopes.
 
   El token no se guarda en ninguna variable: es para la API destino, no para esta.
 

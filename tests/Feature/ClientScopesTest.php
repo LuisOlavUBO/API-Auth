@@ -2,14 +2,13 @@
 
 namespace Tests\Feature;
 
-use App\Models\Api;
+use App\Models\Application;
 use App\Models\OAuthScope;
 use App\Models\Role;
 use Database\Seeders\RoleScopeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Laravel\Passport\Client;
-use Laravel\Passport\ClientRepository;
 use Tests\TestCase;
 
 class ClientScopesTest extends TestCase
@@ -24,10 +23,10 @@ class ClientScopesTest extends TestCase
 
         $this->seed(RoleScopeSeeder::class);
 
-        $this->client = app(ClientRepository::class)->createClientCredentialsGrantClient('sistema-x');
+        $this->client = $this->createClient('sistema-x');
 
-        $maestros = Api::factory()->create(['name' => 'api-maestros']);
-        $matricula = Api::factory()->create(['name' => 'api-matricula']);
+        $maestros = Application::factory()->create(['name' => 'api-maestros']);
+        $matricula = Application::factory()->create(['name' => 'api-matricula']);
 
         foreach (['geografia:leer', 'sistemas:leer', 'homologacion:leer'] as $name) {
             OAuthScope::factory()->for($maestros)->create(['name' => $name]);
@@ -35,8 +34,8 @@ class ClientScopesTest extends TestCase
 
         OAuthScope::factory()->for($matricula)->create(['name' => 'matricula:leer']);
 
-        Role::factory()->withScopes(['geografia:leer', 'sistemas:leer', 'homologacion:leer'])->create(['name' => 'maestros-lector']);
-        Role::factory()->withScopes(['matricula:leer'])->create(['name' => 'matricula-lector']);
+        Role::factory()->for($maestros)->withScopes(['geografia:leer', 'sistemas:leer', 'homologacion:leer'])->create(['name' => 'maestros-lector']);
+        Role::factory()->for($matricula)->withScopes(['matricula:leer'])->create(['name' => 'matricula-lector']);
     }
 
     protected function requestToken(?string $scope, ?string $api = null): TestResponse
@@ -90,7 +89,7 @@ class ClientScopesTest extends TestCase
 
     public function test_client_can_request_scopes_from_all_its_roles(): void
     {
-        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['maestros-lector', 'matricula-lector']])
+        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['api-maestros/maestros-lector', 'api-matricula/matricula-lector']])
             ->assertSuccessful();
 
         $token = $this->requestToken('geografia:leer matricula:leer')->assertOk()->json('access_token');
@@ -100,7 +99,7 @@ class ClientScopesTest extends TestCase
 
     public function test_client_cannot_request_scopes_outside_its_roles(): void
     {
-        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['maestros-lector']])
+        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['api-maestros/maestros-lector']])
             ->assertSuccessful();
 
         $this->requestToken('matricula:leer')->assertBadRequest()->assertJsonPath('error', 'invalid_scope');
@@ -108,8 +107,8 @@ class ClientScopesTest extends TestCase
 
     public function test_client_role_sync_replaces_previous_roles(): void
     {
-        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['maestros-lector']]);
-        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['matricula-lector'], '--sync' => true])
+        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['api-maestros/maestros-lector']]);
+        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['api-matricula/matricula-lector'], '--sync' => true])
             ->assertSuccessful();
 
         $this->requestToken('geografia:leer')->assertBadRequest();
@@ -118,7 +117,7 @@ class ClientScopesTest extends TestCase
 
     public function test_token_for_an_api_carries_only_the_client_scopes_of_that_api(): void
     {
-        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['maestros-lector', 'matricula-lector']]);
+        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['api-maestros/maestros-lector', 'api-matricula/matricula-lector']]);
 
         $maestros = $this->requestToken(null, 'api-maestros')->assertOk()->json('access_token');
         $matricula = $this->requestToken(null, 'api-matricula')->assertOk()->json('access_token');
@@ -129,7 +128,7 @@ class ClientScopesTest extends TestCase
 
     public function test_token_for_an_api_names_it_in_the_audience_after_the_client_id(): void
     {
-        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['maestros-lector']]);
+        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['api-maestros/maestros-lector']]);
 
         $forApi = $this->requestToken(null, 'api-maestros')->assertOk()->json('access_token');
         $withoutApi = $this->requestToken('geografia:leer')->assertOk()->json('access_token');
@@ -143,7 +142,7 @@ class ClientScopesTest extends TestCase
 
     public function test_token_for_an_api_can_be_narrowed_to_some_of_its_scopes(): void
     {
-        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['maestros-lector', 'matricula-lector']]);
+        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['api-maestros/maestros-lector', 'api-matricula/matricula-lector']]);
 
         $token = $this->requestToken('geografia:leer', 'api-maestros')->assertOk()->json('access_token');
 
@@ -153,7 +152,7 @@ class ClientScopesTest extends TestCase
 
     public function test_token_for_an_api_where_the_client_has_no_scopes_is_rejected(): void
     {
-        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['maestros-lector']]);
+        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['api-maestros/maestros-lector']]);
 
         $this->requestToken(null, 'api-matricula')
             ->assertBadRequest()
@@ -163,7 +162,7 @@ class ClientScopesTest extends TestCase
 
     public function test_token_for_an_unknown_api_is_rejected(): void
     {
-        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['maestros-lector']]);
+        $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['api-maestros/maestros-lector']]);
 
         $this->requestToken(null, 'api-bancos')
             ->assertBadRequest()
@@ -173,7 +172,7 @@ class ClientScopesTest extends TestCase
 
     public function test_client_scopes_command_lists_what_the_client_may_request(): void
     {
-        $this->artisan('oauth:client-role', ['client' => $this->client->getKey(), 'roles' => ['maestros-lector', 'matricula-lector']]);
+        $this->artisan('oauth:client-role', ['client' => $this->client->getKey(), 'roles' => ['api-maestros/maestros-lector', 'api-matricula/matricula-lector']]);
 
         $this->artisan('oauth:client-scopes', ['client' => 'sistema-x'])
             ->expectsOutputToContain('May request: geografia:leer homologacion:leer matricula:leer sistemas:leer')
@@ -182,7 +181,7 @@ class ClientScopesTest extends TestCase
 
     public function test_client_role_command_rejects_unknown_clients_and_roles(): void
     {
-        $this->artisan('oauth:client-role', ['client' => 'no-existe', 'roles' => ['maestros-lector']])->assertFailed();
+        $this->artisan('oauth:client-role', ['client' => 'no-existe', 'roles' => ['api-maestros/maestros-lector']])->assertFailed();
         $this->artisan('oauth:client-role', ['client' => 'sistema-x', 'roles' => ['ghost']])->assertFailed();
     }
 }

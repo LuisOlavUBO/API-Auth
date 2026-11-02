@@ -39,6 +39,7 @@ class TokenIntrospectionController extends Controller
             'sub' => $claims['user_id'],
             'scope' => implode(' ', $claims['scopes']),
             'aud' => $claims['audiences'],
+            'roles' => $claims['roles'],
             'exp' => $token?->expires_at?->getTimestamp(),
             'user' => $user ? new UserResource($user) : null,
         ]);

@@ -2,13 +2,12 @@
 
 namespace Tests\Feature;
 
-use App\Models\Api;
+use App\Models\Application;
 use App\Models\OAuthScope;
 use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\RoleScopeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Laravel\Passport\ClientRepository;
 use Tests\TestCase;
 
 class TokenIntrospectionTest extends TestCase
@@ -21,7 +20,7 @@ class TokenIntrospectionTest extends TestCase
     {
         parent::setUp();
 
-        $passwordClient = app(ClientRepository::class)->createPasswordGrantClient('Test Password Client', 'users', true);
+        $passwordClient = $this->createClient('Test Password Client', 'password');
 
         config([
             'oauth.password_client.id' => $passwordClient->getKey(),
@@ -30,7 +29,7 @@ class TokenIntrospectionTest extends TestCase
 
         $this->seed(RoleScopeSeeder::class);
 
-        User::factory()->for(Role::firstWhere('name', 'user'))->create(['email' => 'ana@example.com', 'password' => 'secret-password']);
+        User::factory()->withRoles(Role::firstWhere('name', 'user'))->create(['email' => 'ana@example.com', 'password' => 'secret-password']);
 
         $this->userToken = $this->postJson('/api/auth/v1/login', [
             'email' => 'ana@example.com',
@@ -40,7 +39,7 @@ class TokenIntrospectionTest extends TestCase
 
     protected function serviceToken(string $scope = 'introspect'): string
     {
-        $client = app(ClientRepository::class)->createClientCredentialsGrantClient('Orders Service');
+        $client = $this->createClient('Orders Service');
 
         Role::factory()->withScopes([$scope])->create()->clients()->attach($client->getKey());
 
@@ -77,10 +76,10 @@ class TokenIntrospectionTest extends TestCase
 
     public function test_introspection_reports_the_api_a_token_was_issued_for(): void
     {
-        $api = Api::factory()->create(['name' => 'api-maestros']);
+        $api = Application::factory()->create(['name' => 'api-maestros']);
         OAuthScope::factory()->for($api)->create(['name' => 'geografia:leer']);
 
-        $client = app(ClientRepository::class)->createClientCredentialsGrantClient('Sistema X');
+        $client = $this->createClient('Sistema X');
         Role::factory()->withScopes(['geografia:leer'])->create()->clients()->attach($client->getKey());
 
         $apiToken = $this->postJson('/api/auth/oauth/token', [
@@ -129,6 +128,32 @@ class TokenIntrospectionTest extends TestCase
         $this->withToken($this->userToken)
             ->postJson('/api/auth/v1/introspect', ['token' => $this->userToken])
             ->assertUnauthorized();
+    }
+
+    public function test_introspection_reports_the_roles_of_a_user_token(): void
+    {
+        $this->withToken($this->serviceToken())
+            ->postJson('/api/auth/v1/introspect', ['token' => $this->userToken])
+            ->assertOk()
+            ->assertJsonPath('roles', ['user']);
+    }
+
+    public function test_introspection_reports_the_roles_of_a_service_token(): void
+    {
+        $client = $this->createClient('Orders Service');
+        Role::firstWhere('name', 'introspector')->clients()->attach($client->getKey());
+
+        $token = $this->postJson('/api/auth/oauth/token', [
+            'grant_type' => 'client_credentials',
+            'client_id' => $client->getKey(),
+            'client_secret' => $client->plainSecret,
+            'scope' => 'introspect',
+        ])->assertOk()->json('access_token');
+
+        $this->withToken($token)
+            ->postJson('/api/auth/v1/introspect', ['token' => $token])
+            ->assertOk()
+            ->assertJsonPath('roles', ['introspector']);
     }
 
     public function test_public_key_is_exposed(): void

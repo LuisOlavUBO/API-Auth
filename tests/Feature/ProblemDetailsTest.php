@@ -9,7 +9,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
-use Laravel\Passport\ClientRepository;
 use Mockery;
 use RuntimeException;
 use Tests\TestCase;
@@ -22,7 +21,7 @@ class ProblemDetailsTest extends TestCase
     {
         parent::setUp();
 
-        $client = app(ClientRepository::class)->createPasswordGrantClient('Test Password Client', 'users', true);
+        $client = $this->createClient('Test Password Client', 'password');
 
         config([
             'oauth.password_client.id' => $client->getKey(),
@@ -31,7 +30,7 @@ class ProblemDetailsTest extends TestCase
 
         $this->seed(RoleScopeSeeder::class);
 
-        User::factory()->for(Role::firstWhere('name', 'user'))->create([
+        User::factory()->withRoles(Role::firstWhere('name', 'user'))->create([
             'email' => 'ana@example.com',
             'password' => 'secret-password',
         ]);
@@ -52,6 +51,12 @@ class ProblemDetailsTest extends TestCase
     public function test_requests_without_a_token_get_a_problem(): void
     {
         $this->assertProblem($this->getJson('/api/auth/v1/me'), 401, 'NO_AUTENTICADO');
+    }
+
+    public function test_requests_without_a_token_and_without_accept_still_get_a_problem(): void
+    {
+        $this->assertProblem($this->get('/api/auth/v1/me'), 401, 'NO_AUTENTICADO');
+        $this->assertProblem($this->withToken('invalid.token.value')->get('/api/auth/v1/me'), 401, 'NO_AUTENTICADO');
     }
 
     public function test_tokens_without_the_required_scope_get_a_problem(): void
@@ -138,7 +143,7 @@ class ProblemDetailsTest extends TestCase
      */
     public function test_the_token_endpoint_keeps_the_oauth2_error_format(): void
     {
-        $client = app(ClientRepository::class)->createClientCredentialsGrantClient('Orders Service');
+        $client = $this->createClient('Orders Service');
 
         $response = $this->postJson('/api/auth/oauth/token', [
             'grant_type' => 'client_credentials',

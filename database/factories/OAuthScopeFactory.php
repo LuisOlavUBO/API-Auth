@@ -2,7 +2,7 @@
 
 namespace Database\Factories;
 
-use App\Models\Api;
+use App\Models\Application;
 use App\Models\OAuthScope;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -19,7 +19,7 @@ class OAuthScopeFactory extends Factory
     public function definition(): array
     {
         return [
-            'api_id' => Api::factory(),
+            'application_id' => Application::factory(),
             'name' => fake()->unique()->word().':'.fake()->randomElement(['leer', 'escribir']),
             'description' => fake()->sentence(),
         ];

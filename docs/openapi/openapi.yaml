@@ -8,12 +8,20 @@ info:
     **Usuarios finales:** registro, login, refresh, perfil y logout con el password grant. El secreto del
     cliente nunca sale del servidor: estos endpoints lo usan internamente.
 
+    **Login central (monolitos):** la contraseña solo se escribe en IAM. El satélite manda al navegador a
+    `GET /api/auth/oauth/authorize` (código con PKCE `S256`), IAM muestra su login y devuelve un `code` que el
+    satélite canjea en `POST /api/auth/oauth/token`. `GET /api/auth/logout` cierra la sesión central y revoca los
+    tokens. Estas páginas responden HTML y redirecciones, no problem+json.
+
     **Otros microservicios:** piden su token a `POST /api/auth/oauth/token` con `client_credentials`. Lo recomendado
     es pedir un token **por API** con el parámetro `api`: el token nombra la API en su `aud`
     (`["<client id>", "api-maestros"]`) y solo sirve en esa API. Para validar el token de un usuario
     pueden usar `/introspect` (detecta revocaciones) o verificar la firma localmente con `/public-key`.
 
-    **Scopes:** viven en la base de datos y se asignan por rol. Pedir un scope que el rol no tiene responde
+    **Scopes y roles:** viven en la base de datos. Scopes, roles y clientes pertenecen a una aplicación (satélite,
+    API o monolito) y los roles conceden scopes de cualquier aplicación. Un token de usuario lleva los scopes de
+    los roles del usuario que pertenecen a la aplicación del cliente, sus nombres en la claim `roles` y, en `aud`,
+    el client id y las aplicaciones dueñas de sus scopes. Pedir un scope que esos roles no conceden responde
     `400 invalid_scope`.
 
     **Errores:** las rutas `/api/auth/v1/*` responden los errores en RFC 9457 (`application/problem+json`)
@@ -47,6 +55,8 @@ tags:
     description: Sesiones de usuarios finales (password grant).
   - name: Servicios
     description: Endpoints para otros microservicios.
+  - name: Login central
+    description: Páginas web de IAM y autorización con código y PKCE para los satélites monolito.
   - name: Salud
     description: Estado del servicio.
 
@@ -247,15 +257,24 @@ paths:
   /api/auth/oauth/token:
     post:
       tags: [Servicios]
-      summary: Token de cliente (client_credentials)
+      summary: Token de cliente (client_credentials) o canje del código (authorization_code)
       description: |
         Endpoint estándar OAuth2 de Passport. Los microservicios piden aquí su token con su `client_id` y
-        `client_secret`.
+        `client_secret`. Límite: `OAUTH_TOKEN_RATE_LIMIT` solicitudes por minuto (120 por omisión) por
+        `client_id`; al superarlo responde `429` con `Retry-After`.
+
+        **Canje del código** (`grant_type=authorization_code`, login central): el satélite cambia el `code`
+        recibido en su `redirect_uri` por el access y el refresh token, con el `code_verifier` de su PKCE y las
+        credenciales de su cliente. Los tokens traen los roles y scopes que la persona tiene en la aplicación del
+        cliente. Con `grant_type=refresh_token` renueva el par; el refresh vence a los 120 minutos de inactividad.
+        Un `code_verifier` incorrecto o un código ya usado responden `400 invalid_grant`.
 
         - Con `api`: el token solo sirve en esa API. Sin `scope` trae todos los scopes que los roles del
           cliente le dan en esa API; con `scope`, todos deben pertenecer a ella.
         - API inexistente: `400 invalid_request`. Cliente sin scopes en esa API: `400 invalid_scope`.
-        - Un cliente sin roles no puede pedir ningún scope.
+        - Un cliente sin roles no puede pedir ningún scope. Sin `api` y sin `scope`, el token no trae scopes.
+        - Los roles del cliente pueden ser de cualquier aplicación. La claim `roles` del token lleva los roles
+          del cliente que conceden alguno de sus scopes.
       operationId: tokenCliente
       security: []
       requestBody:
@@ -268,7 +287,7 @@ paths:
               properties:
                 grant_type:
                   type: string
-                  enum: [client_credentials]
+                  enum: [client_credentials, authorization_code, refresh_token]
                 client_id: { type: string }
                 client_secret:
                   type: string
@@ -279,8 +298,20 @@ paths:
                   examples: [introspect]
                 api:
                   type: string
-                  description: Nombre de la API para la que se pide el token.
+                  description: Nombre de la API para la que se pide el token (`client_credentials`).
                   examples: [api-maestros]
+                code:
+                  type: string
+                  description: Código recibido en la `redirect_uri` (`authorization_code`).
+                redirect_uri:
+                  type: string
+                  description: La misma `redirect_uri` de la solicitud de autorización (`authorization_code`).
+                code_verifier:
+                  type: string
+                  description: El verificador cuyo SHA-256 se envió como `code_challenge` (`authorization_code`).
+                refresh_token:
+                  type: string
+                  description: Refresh token a renovar (`refresh_token`).
       responses:
         '200':
           description: Token emitido.
@@ -295,8 +326,11 @@ paths:
                     type: integer
                     description: Segundos hasta que vence.
                   access_token: { type: string }
+                  refresh_token:
+                    type: string
+                    description: Solo con `authorization_code` y `refresh_token`.
         '400':
-          description: Solicitud inválida (`invalid_request`, `invalid_scope`, `unsupported_grant_type`).
+          description: Solicitud inválida (`invalid_request`, `invalid_scope`, `invalid_grant`, `unsupported_grant_type`).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorPassport' }
@@ -305,6 +339,146 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorPassport' }
+        '429':
+          description: Se superó el límite de solicitudes del cliente.
+          headers:
+            Retry-After:
+              description: Segundos que hay que esperar antes de reintentar.
+              schema: { type: integer }
+
+  /api/auth/oauth/authorize:
+    get:
+      tags: [Login central]
+      summary: Autorización con código y PKCE
+      description: |
+        El satélite manda aquí al navegador de la persona. Sin sesión de IAM la envía a `/api/auth/login` y, al
+        terminar, vuelve a esta misma solicitud. Con sesión y roles en la aplicación del cliente redirige a
+        `redirect_uri` con `code` y `state`, sin pantalla de consentimiento; el satélite canjea el código en
+        `POST /api/auth/oauth/token`.
+
+        - PKCE `S256` es obligatorio: sin `code_challenge` o con otro método responde `400` antes de pedir credenciales.
+        - La `redirect_uri` debe estar registrada en el cliente; si no, responde un error y no redirige.
+        - `prompt=login` cierra la sesión de IAM y vuelve a pedir la clave. `prompt=consent` no se admite.
+        - Sin ningún rol en la aplicación del cliente responde `403` con "No tienes acceso a este sistema,
+          contacta a soporte", sin código ni redirección.
+
+        Responde HTML y redirecciones, no problem+json.
+      operationId: autorizar
+      security: []
+      parameters:
+        - { name: response_type, in: query, required: true, schema: { type: string, enum: [code] } }
+        - { name: client_id, in: query, required: true, schema: { type: string } }
+        - { name: redirect_uri, in: query, required: true, schema: { type: string, format: uri } }
+        - { name: state, in: query, required: true, schema: { type: string } }
+        - name: code_challenge
+          in: query
+          required: true
+          description: SHA-256 del `code_verifier`, en base64url sin relleno.
+          schema: { type: string }
+        - { name: code_challenge_method, in: query, required: true, schema: { type: string, enum: [S256] } }
+        - { name: scope, in: query, required: false, description: Scopes separados por espacio., schema: { type: string } }
+        - { name: prompt, in: query, required: false, schema: { type: string, enum: [login] } }
+      responses:
+        '302':
+          description: A `redirect_uri` con `code` y `state`, o a `/api/auth/login` si la persona no tiene sesión.
+          headers:
+            Location: { schema: { type: string } }
+        '400':
+          description: Falta PKCE `S256` o la solicitud no es válida.
+          content:
+            text/html: { schema: { type: string } }
+        '401':
+          description: Cliente desconocido o `redirect_uri` no registrada (`invalid_client`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorPassport' }
+        '403':
+          description: La persona no tiene roles en la aplicación del cliente.
+          content:
+            text/html: { schema: { type: string } }
+
+  /api/auth/login:
+    get:
+      tags: [Login central]
+      summary: Formulario de login
+      description: |
+        Página HTML con el formulario. Si la persona ya tiene sesión, muestra su email y un botón para cerrarla
+        (o continúa con la solicitud de autorización pendiente). La sesión de IAM dura 120 minutos sin uso; su
+        cookie va acotada a `/api/auth`, `HttpOnly` y `SameSite=Lax`.
+      operationId: formularioLogin
+      security: []
+      responses:
+        '200':
+          description: Formulario de login.
+          content:
+            text/html: { schema: { type: string } }
+        '302':
+          description: Con sesión y una solicitud de autorización pendiente, vuelve a ella.
+    post:
+      tags: [Login central]
+      summary: Enviar el formulario de login
+      description: |
+        Inicia la sesión de IAM con `email` y `password` (formulario con token CSRF) y redirige al destino
+        original, o al formulario si no hay uno. Con credenciales incorrectas o datos inválidos vuelve al
+        formulario con el mensaje. Rate limit: 10 solicitudes por minuto por email + IP.
+      operationId: enviarLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        '302':
+          description: Sesión iniciada (al destino original) o error (de vuelta al formulario).
+          headers:
+            Location: { schema: { type: string } }
+        '429':
+          description: Se superó el rate limit de 10 por minuto por email + IP.
+          headers:
+            Retry-After:
+              description: Segundos que hay que esperar antes de reintentar.
+              schema: { type: integer }
+
+  /api/auth/logout:
+    get:
+      tags: [Login central]
+      summary: Logout central iniciado por un satélite
+      description: |
+        Cierra la sesión de IAM, revoca todos los tokens de acceso y de refresh de la persona (en todos los
+        satélites) y redirige a `return` solo si su origen (esquema, host y puerto) coincide con el de una
+        `redirect_uri` registrada del cliente. En otro caso, o sin parámetros, muestra la página de sesión
+        cerrada. Cambia estado con `GET` porque así se inicia el cierre de sesión desde la aplicación en OIDC.
+      operationId: cerrarSesionCentral
+      security: []
+      parameters:
+        - { name: client_id, in: query, required: false, schema: { type: string } }
+        - { name: return, in: query, required: false, schema: { type: string, format: uri } }
+      responses:
+        '200':
+          description: Sesión cerrada.
+          content:
+            text/html: { schema: { type: string } }
+        '302':
+          description: A `return`, que es de un origen registrado del cliente.
+          headers:
+            Location: { schema: { type: string } }
+    post:
+      tags: [Login central]
+      summary: Logout desde la página de IAM
+      description: Cierra la sesión de IAM, revoca todos los tokens de la persona y vuelve al formulario de login.
+      operationId: cerrarSesionIam
+      security: []
+      responses:
+        '302':
+          description: Al formulario de login.
+          headers:
+            Location: { schema: { type: string } }
 
   /api/auth/v1/salud:
     get:
@@ -410,7 +584,7 @@ components:
 
     TokenActivo:
       type: object
-      required: [active, token_type, client_id, sub, scope, aud, exp, user]
+      required: [active, token_type, client_id, sub, scope, aud, roles, exp, user]
       properties:
         active: { type: boolean, const: true }
         token_type: { type: string, const: Bearer }
@@ -424,7 +598,15 @@ components:
         aud:
           type: array
           items: { type: string }
-          description: Client ID y, si el token es para una API, su nombre.
+          description: |
+            Client ID y después las aplicaciones del token: la API pedida en un token de cliente con `api`, o las
+            aplicaciones dueñas de los scopes en un token de usuario (en orden alfabético).
+        roles:
+          type: array
+          items: { type: string }
+          description: |
+            Roles de la claim `roles` del token: los del usuario que pertenecen a la aplicación del cliente, o los
+            del cliente que conceden alguno de sus scopes.
         exp:
           type: [integer, 'null']
           description: Vencimiento (timestamp Unix).

@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\Client;
 use App\Services\AccessTokenRepository;
 use App\Services\ScopeRepository;
 use App\Services\TokenAudience;
@@ -28,8 +29,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(TokenAudience::class);
         $this->app->bind(PassportAccessTokenRepository::class, AccessTokenRepository::class);
 
-        // Only POST /api/auth/oauth/token is used, and routes/api.php registers it under the
-        // API prefix. The rest (authorize, device, token/refresh) need a web login this API lacks.
+        // Only the token and authorize endpoints are used: routes/api.php and routes/web.php register
+        // them under the API prefix. The rest (approve, deny, device, token/refresh) is not published.
         Passport::ignoreRoutes();
     }
 
@@ -46,17 +47,32 @@ class AppServiceProvider extends ServiceProvider
             $limiter->for('auth', function (Request $request) {
                 return Limit::perMinute(10)->by($request->input('email').'|'.$request->ip());
             });
+
+            // One satellite must not use up the token requests of the others behind the same IP.
+            // The client may authenticate with Basic instead of sending client_id.
+            $limiter->for('oauth-token', function (Request $request) {
+                return Limit::perMinute(config('oauth.token_rate_limit'))
+                    ->by($request->input('client_id') ?: $request->getUser() ?: $request->ip());
+            });
         });
     }
 
     /**
-     * Configure grants, scopes and token lifetimes for Passport.
+     * Configure grants, scopes and token lifetimes for Passport. Passport has no default
+     * scopes: a request without "scope" reaches ScopeRepository as an empty list, and the
+     * default scopes of /v1/login (config oauth.default_scopes) are sent by OAuthTokenService.
      */
     protected function configurePassport(): void
     {
         Passport::enablePasswordGrant();
+        Passport::useClientModel(Client::class);
 
-        Passport::defaultScopes(config('oauth.default_scopes'));
+        // Clients never ask for consent. This view only answers prompt=consent, which would
+        // otherwise show an approval page whose routes are not published.
+        Passport::authorizationView(fn () => response()->view('auth.message', [
+            'title' => 'Solicitud no válida',
+            'message' => 'Esta aplicación no requiere consentimiento: quita prompt=consent de la solicitud.',
+        ], 400));
 
         Passport::tokensExpireIn(now()->addMinutes(config('oauth.access_token_ttl')));
         Passport::refreshTokensExpireIn(now()->addMinutes(config('oauth.refresh_token_ttl')));

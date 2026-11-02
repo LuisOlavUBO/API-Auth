@@ -13,4 +13,15 @@ namespace App\Http;
 final class ApiPrefix
 {
     public const BASE = 'api/auth';
+
+    /**
+     * Pages for people, not for API clients: they answer HTML and redirections, not RFC 9457.
+     *
+     * @var string[]
+     */
+    public const WEB_PAGES = [
+        self::BASE.'/login',
+        self::BASE.'/logout',
+        self::BASE.'/oauth/authorize',
+    ];
 }

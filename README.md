@@ -19,7 +19,7 @@ php artisan key:generate
 php artisan migrate
 php artisan db:seed --class=RoleScopeSeeder
 php artisan passport:keys
-php artisan passport:client --password --name="Auth Service Password Client" --provider=users
+php artisan oauth:client "Auth Service Password Client" --application=api-auth --type=password
 ```
 
 Copia el `Client ID` y `Client Secret` del último comando a `.env`:
@@ -110,7 +110,7 @@ El compose fuerza `APP_ENV=production`, `APP_DEBUG=false` y `LOG_CHANNEL=stderr`
 | POST | `/introspect` | Bearer (cliente, scope `introspect`) | `token` → `{ active, sub, client_id, scope, exp, user }` |
 | GET | `/public-key` | — | Clave pública PEM para verificar JWT localmente |
 
-Además `POST /api/auth/oauth/token` es el endpoint estándar OAuth2 de Passport, usado por los microservicios para el grant `client_credentials`. Es la única ruta de Passport registrada: las demás (`/oauth/authorize`, `/oauth/device`, `/oauth/token/refresh`) están apagadas con `Passport::ignoreRoutes()` porque requieren un login web que esta API no tiene. `GET /api/auth/v1/salud` responde `{"estado": "OK", "base_datos": "OK"}` o `503` si la base no responde (misma forma que en API-Maestros). `/up` solo indica que Laravel arrancó.
+Además `POST /api/auth/oauth/token` es el endpoint estándar OAuth2 de Passport, usado por los microservicios para el grant `client_credentials`. Junto con `GET /api/auth/oauth/authorize` del [login central](#login-central-sso-de-los-satélites-monolito) son las únicas rutas de Passport registradas: las demás (aprobar o rechazar, `/oauth/device`, `/oauth/token/refresh`) están apagadas con `Passport::ignoreRoutes()`. El login central agrega las páginas web `GET/POST /api/auth/login` y `GET/POST /api/auth/logout`, que responden HTML y no problem+json. `GET /api/auth/v1/salud` responde `{"estado": "OK", "base_datos": "OK"}` o `503` si la base no responde (misma forma que en API-Maestros). `/up` solo indica que Laravel arrancó.
 
 Los endpoints públicos de `register`/`login`/`refresh` tienen rate limit de 10 req/min por email+IP.
 
@@ -169,18 +169,63 @@ curl http://localhost:8000/api/auth/v1/me -H "Accept: application/json" -H "Auth
 
 ### Colección Bruno
 
-[docs/bruno](docs/bruno) es una colección de [Bruno](https://www.usebruno.com/) con todos los endpoints, documentados y con tests. Se abre con *Open Collection* sobre esa carpeta; se elige el entorno `Local` o `Servidor` y se completan `email`, `password`, `client_id` y `client_secret` (las secretas quedan solo en el equipo). **Iniciar sesión** guarda `accessToken`/`refreshToken` y **Token de cliente (introspect)** guarda `clientToken` para las demás solicitudes.
+[docs/bruno](docs/bruno) es una colección de [Bruno](https://www.usebruno.com/) con todos los endpoints, documentados y con tests. Se abre con *Open Collection* sobre esa carpeta; se elige el entorno `Local` o `Servidor` y se completan `email`, `password`, `client_id` y `client_secret` (las secretas quedan solo en el equipo); para la solicitud OAuth2 de **Login central**, también `callback_url`, `code_client_id` y `code_client_secret`. **Iniciar sesión** guarda `accessToken`/`refreshToken` y **Token de cliente (introspect)** guarda `clientToken` para las demás solicitudes.
 
-## Integrar otro microservicio
+## Login central (SSO de los satélites monolito)
 
-1. Crear un cliente para el servicio y darle roles (sin roles no puede pedir ningún scope):
+La contraseña solo se escribe en IAM. Un satélite monolito manda el navegador de la persona a `GET /api/auth/oauth/authorize` (Authorization Code con PKCE `S256`, sin pantalla de consentimiento); IAM muestra su login en `/api/auth/login` (Blade, dentro de este servicio), guarda la sesión y devuelve un `code` a la `redirect_uri` del satélite, que lo canjea en `POST /api/auth/oauth/token` con su `code_verifier` y las credenciales de su cliente. El token trae los roles y scopes que la persona tiene en la aplicación del cliente. Las SPA, CORS y los clientes públicos quedan para otra entrega.
+
+1. Crear el cliente de código de autorización del satélite (confidencial, con al menos una `--redirect` absoluta; se repite para varias). La aplicación y los roles de la persona se crean como se explica en [Scopes y roles](#scopes-y-roles):
 
    ```bash
-   php artisan passport:client --client --name="orders-service"
+   php artisan oauth:application portal "Portal de la UBO"
    ```
 
    ```bash
-   php artisan oauth:client-role orders-service introspector
+   php artisan oauth:client portal-web --application=portal --type=authorization-code --redirect=https://portal.ubo.cl/callback
+   ```
+
+2. El satélite genera un `code_verifier` y un `state`, y manda a la persona a:
+
+   ```
+   GET /api/auth/oauth/authorize?response_type=code&client_id=<id>&redirect_uri=https://portal.ubo.cl/callback&state=<state>&code_challenge=<base64url(sha256(code_verifier))>&code_challenge_method=S256
+   ```
+
+   - Sin `code_challenge` o con `plain` responde `400` antes de pedir la clave. Una `redirect_uri` que el cliente no tiene registrada responde un error y no redirige.
+   - Una persona sin ningún rol en la aplicación del cliente ve "No tienes acceso a este sistema, contacta a soporte" (403): no recibe código ni vuelve al satélite.
+   - `prompt=login` cierra la sesión de IAM y vuelve a pedir la clave, aunque hubiera sesión. Afecta a la sesión de IAM completa: los tokens de los otros satélites siguen hasta que venzan.
+
+3. Con el `code` recibido, el satélite pide sus tokens:
+
+   ```bash
+   curl -X POST http://localhost:8000/api/auth/oauth/token -d "grant_type=authorization_code&client_id=<id>&client_secret=<secret>&redirect_uri=https://portal.ubo.cl/callback&code_verifier=<code_verifier>&code=<code>"
+   ```
+
+4. Logout central: el satélite manda a `GET /api/auth/logout?client_id=<id>&return=https://portal.ubo.cl/` (el `return` debe tener el mismo origen que una redirección registrada del cliente). Cierra la sesión de IAM, revoca todos los tokens de la persona en todos los satélites y vuelve a `return`; si no coincide, muestra "Sesión cerrada". La página de IAM tiene su propio botón (`POST /api/auth/logout`).
+
+**Tiempos:** la sesión de IAM dura 120 minutos sin uso (`SESSION_LIFETIME`) y su cookie va acotada a `/api/auth`, `HttpOnly` y `SameSite=Lax`. El refresh token vence a los 120 minutos de inactividad (`PASSPORT_REFRESH_TOKEN_TTL`, se renueva con cada uso); esto también vale para los tokens de `/api/auth/v1/login`.
+
+**Variables de despliegue** (en el `.env.prod`):
+
+- `SESSION_SECURE_COOKIE=true` (el compose de producción ya lo fija): la cookie de sesión solo viaja por HTTPS.
+- `TRUSTED_PROXIES`: proxies cuyas cabeceras `X-Forwarded-*` se aceptan, para que los límites de solicitudes vean la IP real. Vacío no confía en nadie; `*` confía en todos (solo si el servicio únicamente es alcanzable por el proxy; si no, cualquiera puede falsificar su IP); o una lista de IP o redes separada por comas, p. ej. `172.18.0.0/16`.
+- `OAUTH_TOKEN_RATE_LIMIT`: solicitudes por minuto a `/api/auth/oauth/token` por `client_id` (120 por omisión).
+- Si estaban definidas, quitar `SESSION_PATH` y bajar `PASSPORT_REFRESH_TOKEN_TTL` a 120.
+
+## Integrar otro microservicio
+
+1. Registrar la aplicación del servicio, crear su cliente y darle roles (sin roles no puede pedir ningún scope). Todo cliente pertenece a una aplicación, por eso se crea con `oauth:client` y no con `passport:client`:
+
+   ```bash
+   php artisan oauth:application orders-service "Servicio de órdenes"
+   ```
+
+   ```bash
+   php artisan oauth:client orders-service --application=orders-service --type=client-credentials
+   ```
+
+   ```bash
+   php artisan oauth:client-role orders-service api-auth/introspector
    ```
 
 2. El servicio obtiene su token:
@@ -203,26 +248,29 @@ curl http://localhost:8000/api/auth/v1/me -H "Accept: application/json" -H "Auth
 
 Los scopes viven en base de datos y se asignan **por rol**:
 
-- `apis`: las APIs o backends que exponen endpoints protegidos (`api-auth`, `api-maestros`, ...). Un sistema que solo consume no va aquí.
-- `oauth_scopes`: catálogo de scopes que existen (`user:read`, `geografia:leer`, ...). Cada scope pertenece a una API (`api_id`, obligatorio). El nombre sigue la convención `dominio:permiso` y es único en toda la organización.
-- `roles` + `oauth_scope_role`: qué scopes puede pedir cada rol.
-- `users.role_id`: rol del usuario (uno). Los usuarios nuevos reciben `OAUTH_DEFAULT_ROLE` (por defecto `user`).
-- `oauth_client_role`: roles de cada cliente `client_credentials` (uno o varios, p. ej. uno por API que consume).
+Una **aplicación** es un satélite, una API o un monolito. Los scopes, los roles y los clientes viven en base de datos y pertenecen a una aplicación:
 
-Carga inicial (API `api-auth`; roles `user`, `admin` e `introspector`; scopes `user:read`, `user:write`, `introspect`):
+- `applications`: las aplicaciones (`api-auth`, `api-maestros`, `portal`, ...). Cada una usa solo lo que necesita: scopes si valida accesos, roles si tiene usuarios o los ofrece a quien la consume, clientes si pide tokens.
+- `oauth_scopes`: catálogo de scopes que existen (`user:read`, `geografia:leer`, ...). Cada scope pertenece a una aplicación (`application_id`, obligatorio). El nombre sigue la convención `dominio:permiso` y es único en toda la organización.
+- `roles` + `oauth_scope_role`: qué scopes concede cada rol, de cualquier aplicación. Un rol pertenece a una aplicación y su nombre es único dentro de ella; en los comandos se escribe `<aplicación>/<rol>`.
+- `role_user`: roles de cada usuario (varios, en una o varias aplicaciones). Los usuarios nuevos reciben el rol `OAUTH_DEFAULT_ROLE` (por defecto `user`) de la aplicación `OAUTH_APPLICATION` (por defecto `api-auth`).
+- `oauth_clients.application_id`: la aplicación de cada cliente (obligatorio). Un cliente de `client_credentials` puede tener roles de cualquier aplicación (`oauth_client_role`), normalmente los que ofrece cada API que consume.
+
+Carga inicial (aplicación `api-auth`; roles `user`, `admin` e `introspector`; scopes `user:read`, `user:write`, `introspect`):
 
 ```bash
 php artisan db:seed --class=RoleScopeSeeder
 ```
 
-Al hacer login, [app/Services/ScopeRepository.php](app/Services/ScopeRepository.php) filtra los scopes contra el rol del usuario:
+Al emitir un token de usuario, [app/Services/ScopeRepository.php](app/Services/ScopeRepository.php) usa solo los roles del usuario que pertenecen a la aplicación del cliente que lo obtiene:
 
-- Si no se manda `scope`, se pide el scope por defecto (`user:read`).
-- Pedir un scope que el rol no tiene (o `*`, o uno inexistente) responde `400 invalid_scope`.
-- En `/refresh` se quitan los scopes que el rol ya no tenga, así los cambios de rol se aplican sin forzar un nuevo login.
-- Un usuario sin rol obtiene un token sin scopes.
+- Sin `scope`, el token trae todos los scopes de esos roles. `POST /api/auth/v1/login` es la excepción: sin `scope` pide el scope por defecto (`user:read`).
+- Pedir un scope que esos roles no conceden (o `*`, o uno inexistente) responde `400 invalid_scope`.
+- Un usuario sin roles en la aplicación obtiene un token sin scopes.
+- En `/refresh` se quitan los scopes que los roles ya no conceden y nunca se agregan; los scopes nuevos llegan en el siguiente login. La claim `roles` se recalcula.
+- La claim `roles` lleva los nombres de esos roles y `aud` lleva el client id y, en orden alfabético, las aplicaciones dueñas de los scopes.
 
-Los tokens de cliente (`client_credentials`) siguen las mismas reglas con la unión de los scopes de todos los roles del cliente. **Un cliente sin roles no puede pedir ningún scope.**
+Los tokens de cliente (`client_credentials`) usan la unión de los scopes de todos los roles del cliente y solo los que se piden. **Sin `scope` y sin `api`, el token no trae scopes.** Su claim `roles` lleva los roles del cliente que conceden alguno de los scopes del token.
 
 ### Tokens por API
 
@@ -237,45 +285,55 @@ El token nombra la API en su `aud`, después del client id: `"aud": ["<client id
 
 ### Registrar un sistema que consume varias APIs
 
-Crea un rol por perfil de acceso de cada API y asigna al sistema los que necesite:
+Cada API ofrece un rol por perfil de acceso y se asignan al cliente del sistema los que necesite:
 
 ```bash
-php artisan oauth:role maestros-lector "Lectura de API-Maestros"
+php artisan oauth:application api-maestros "Datos maestros"
 ```
 
 ```bash
-php artisan oauth:scope geografia:leer "Leer geografía" --api=api-maestros --role=maestros-lector
+php artisan oauth:role maestros-lector "Lectura de API-Maestros" --application=api-maestros
 ```
 
 ```bash
-php artisan passport:client --client --name="sistema-x"
+php artisan oauth:scope geografia:leer "Leer geografía" --application=api-maestros --role=api-maestros/maestros-lector
 ```
 
 ```bash
-php artisan oauth:client-role sistema-x maestros-lector matricula-lector
+php artisan oauth:application sistema-x "Sistema X"
+```
+
+```bash
+php artisan oauth:client sistema-x --application=sistema-x --type=client-credentials
+```
+
+```bash
+php artisan oauth:client-role sistema-x api-maestros/maestros-lector
 ```
 
 ```bash
 php artisan oauth:client-scopes sistema-x
 ```
 
-`oauth:scope` exige que la API (`--api`) y los roles (`--role`) existan. Volver a ejecutarlo con otra `--api` mueve el scope sin cambiar su nombre. `oauth:client-role` agrega roles; con `--sync` reemplaza los anteriores. `oauth:client-scopes` muestra los scopes agrupados por API.
+`oauth:scope` exige que la aplicación (`--application`) y los roles (`--role`, como `<aplicación>/<rol>`) existan. Volver a ejecutarlo con otra `--application` mueve el scope sin cambiar su nombre. `oauth:client-role` agrega roles de cualquier aplicación; con `--sync` reemplaza los anteriores. `oauth:client-scopes` muestra la aplicación del cliente y sus scopes agrupados por aplicación. `oauth:client-application` mueve un cliente a otra aplicación y `oauth:role-scopes <aplicación>` lista los scopes que concede cada rol de una aplicación, para revisar que solo concede lo que su aplicación usa.
 
 ### Agregar una API nueva
 
 No hace falta tocar código ni desplegar este servicio:
 
 ```bash
-php artisan oauth:api api-matricula "Matrícula de alumnos"
+php artisan oauth:application api-matricula "Matrícula de alumnos"
 ```
 
 ```bash
-php artisan oauth:scope matricula:leer "Leer matrículas" --api=api-matricula --role=admin
+php artisan oauth:scope matricula:leer "Leer matrículas" --application=api-matricula --role=api-auth/admin
 ```
 
 ```bash
-php artisan oauth:assign-role ana@example.com admin
+php artisan oauth:assign-role ana@example.com api-auth/admin
 ```
+
+`oauth:assign-role` agrega el rol sin quitar los demás del usuario; con `--sync` reemplaza solo los que tiene en la aplicación de ese rol.
 
 En la API nueva, exige el scope en la ruta:
 
@@ -289,7 +347,7 @@ Si la API valida el JWT localmente, debe revisar que el claim `scopes` contenga 
 
 ## Configuración de expiración (minutos)
 
-`PASSPORT_ACCESS_TOKEN_TTL` (60), `PASSPORT_REFRESH_TOKEN_TTL` (43200 = 30 días), `PASSPORT_CLIENT_TOKEN_TTL` (60).
+`PASSPORT_ACCESS_TOKEN_TTL` (60), `PASSPORT_REFRESH_TOKEN_TTL` (120: es el plazo de inactividad, porque el refresh se renueva con cada uso), `PASSPORT_CLIENT_TOKEN_TTL` (60). La sesión web de IAM usa `SESSION_LIFETIME` (120).
 
 Limpiar tokens expirados/revocados periódicamente:
 
@@ -345,3 +403,4 @@ php artisan test
 - [app/Exceptions/OAuthTokenException.php](app/Exceptions/OAuthTokenException.php) — fallos de login y refresh: código OAuth, título y qué se registra en el log.
 - [config/ubo-common.php](config/ubo-common.php) — módulos de UBO.Common: Tracing, Problems, Health (`/api/auth/v1/salud`) y SqlServer.
 - [routes/api.php](routes/api.php) — rutas.
+- [routes/web.php](routes/web.php) — login, logout y autorización del [login central](#login-central-sso-de-los-satélites-monolito); [LoginController](app/Http/Controllers/Auth/LoginController.php), [LogoutController](app/Http/Controllers/Auth/LogoutController.php), los middleware [RequirePkce](app/Http/Middleware/RequirePkce.php) y [RequireRolesInClientApplication](app/Http/Middleware/RequireRolesInClientApplication.php) y las vistas en [resources/views/auth](resources/views/auth).

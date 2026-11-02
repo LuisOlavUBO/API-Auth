@@ -6,8 +6,10 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Passport\Contracts\OAuthenticatable;
@@ -20,19 +22,37 @@ class User extends Authenticatable implements OAuthenticatable
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
 
-    public function role(): BelongsTo
+    /**
+     * Roles of this user, in any application.
+     */
+    public function roles(): BelongsToMany
     {
-        return $this->belongsTo(Role::class);
+        return $this->belongsToMany(Role::class, 'role_user', 'user_id', 'role_id');
     }
 
     /**
-     * Names of the scopes this user's role allows in their tokens.
+     * Roles of this user that belong to one application.
+     *
+     * @return Collection<int, Role>
+     */
+    public function rolesIn(int $applicationId): Collection
+    {
+        return $this->roles()->where('roles.application_id', $applicationId)->orderBy('roles.name')->get();
+    }
+
+    /**
+     * Names of the scopes the user's roles in one application allow in their tokens.
      *
      * @return string[]
      */
-    public function allowedScopeNames(): array
+    public function allowedScopeNames(int $applicationId): array
     {
-        return $this->role?->oauthScopes()->pluck('name')->all() ?? [];
+        return OAuthScope::whereHas('roles', fn (Builder $roles) => $roles
+            ->where('roles.application_id', $applicationId)
+            ->whereHas('users', fn (Builder $users) => $users->whereKey($this->getKey())))
+            ->orderBy('name')
+            ->pluck('name')
+            ->all();
     }
 
     /**

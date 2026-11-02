@@ -1,0 +1,53 @@
+meta {
+  name: Codigo con PKCE
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/auth/v1/me
+  body: none
+  auth: oauth2
+}
+
+auth:oauth2 {
+  grant_type: authorization_code
+  callback_url: {{callback_url}}
+  authorization_url: {{baseUrl}}/api/auth/oauth/authorize
+  access_token_url: {{baseUrl}}/api/auth/oauth/token
+  refresh_token_url: {{baseUrl}}/api/auth/oauth/token
+  client_id: {{code_client_id}}
+  client_secret: {{code_client_secret}}
+  scope: 
+  state: bruno-state
+  pkce: true
+  credentials_placement: body
+  credentials_id: credentials
+  token_placement: header
+  token_header_prefix: Bearer
+  auto_fetch_token: true
+  auto_refresh_token: true
+}
+
+tests {
+  test("responde 200 con el usuario del token", function () {
+    expect(res.status).to.equal(200);
+    expect(res.body).to.have.property("email");
+  });
+}
+
+docs {
+  # Código de autorización con PKCE
+
+  `GET /api/auth/oauth/authorize` → login de IAM → `POST /api/auth/oauth/token` · OAuth2 de Bruno (`authorization_code`, PKCE activado)
+
+  Al pulsar **Get New Access Token** Bruno abre `/api/auth/oauth/authorize` con `code_challenge_method=S256`; IAM muestra su login y, al iniciar sesión, redirige a `{{callback_url}}` con `code` y `state`. Bruno canjea el código con las credenciales del cliente (`{{code_client_id}}`, `{{code_client_secret}}`).
+
+  La solicitud usa el token en `GET /api/auth/v1/me`, que pide el scope `user:read`: si el rol de la persona en la aplicación del cliente no lo concede, responde `403 SCOPE_INSUFICIENTE` aunque el login haya funcionado.
+
+  - Una `redirect_uri` no registrada en el cliente responde `401 invalid_client` y no redirige.
+  - Una persona sin roles en la aplicación del cliente ve "No tienes acceso a este sistema, contacta a soporte" (403) y no recibe código.
+  - Con `prompt=login` en la URL de autorización IAM cierra su sesión y vuelve a pedir la clave.
+  - El refresh token vence a los 120 minutos de inactividad.
+  - Logout central: abrir `{{baseUrl}}/api/auth/logout?client_id={{code_client_id}}&return={{callback_url}}` en el navegador cierra la sesión de IAM y revoca todos los tokens de la persona.
+}

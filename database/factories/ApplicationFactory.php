@@ -2,13 +2,13 @@
 
 namespace Database\Factories;
 
-use App\Models\Api;
+use App\Models\Application;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends Factory<Api>
+ * @extends Factory<Application>
  */
-class ApiFactory extends Factory
+class ApplicationFactory extends Factory
 {
     /**
      * Define the model's default state.
@@ -18,7 +18,7 @@ class ApiFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => 'api-'.fake()->unique()->slug(2),
+            'name' => 'app-'.fake()->unique()->slug(2),
             'description' => fake()->sentence(),
         ];
     }
