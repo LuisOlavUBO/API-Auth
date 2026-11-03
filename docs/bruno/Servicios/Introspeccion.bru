@@ -54,12 +54,15 @@ docs {
     "token_type": "Bearer",
     "client_id": "9d1c...",
     "sub": "1",
+    "uuid": "01a1a2ca-60a6-7113-a7c8-ac6d008e5f8b",
     "scope": "user:read",
     "aud": ["9d1c...", "api-auth"],
     "roles": ["user"],
     "exp": 1793102400,
     "user": {
       "id": 1,
+      "uuid": "01a1a2ca-60a6-7113-a7c8-ac6d008e5f8b",
+      "rut": "12345678-5",
       "name": "Ana",
       "email": "ana@example.com",
       "email_verified_at": null,
@@ -68,7 +71,7 @@ docs {
   }
   ```
 
-  `sub` y `user` son `null` en tokens de cliente. `aud` incluye el nombre de la API si el token se pidió con `api`, y en un token de usuario las aplicaciones dueñas de sus scopes. `roles` es la claim `roles` del token: los roles del usuario en la aplicación del cliente, o los del cliente que conceden alguno de sus scopes.
+  `sub`, `uuid` y `user` son `null` en tokens de cliente. `uuid` es la claim `uuid` del token, el identificador público del usuario: los demás sistemas guardan ese valor, no `sub`. `aud` incluye el nombre de la API si el token se pidió con `api`, y en un token de usuario las aplicaciones dueñas de sus scopes. `roles` es la claim `roles` del token: los roles del usuario en la aplicación del cliente, o los del cliente que conceden alguno de sus scopes.
 
   ## Respuesta 200 (token inválido, vencido o revocado)
 

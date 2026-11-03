@@ -30,6 +30,7 @@ class AccessToken extends PassportAccessToken
      * @param  ScopeEntityInterface[]  $scopes
      * @param  string[]  $applications  Applications the token is for, named in "aud" after the client id.
      * @param  string[]  $roles  Roles named in the "roles" claim.
+     * @param  string|null  $userUuid  The user's public identifier, in a "uuid" claim; null in client tokens.
      */
     public function __construct(
         ?string $userIdentifier,
@@ -37,18 +38,20 @@ class AccessToken extends PassportAccessToken
         ClientEntityInterface $client,
         protected array $applications = [],
         protected array $roles = [],
+        protected ?string $userUuid = null,
     ) {
         parent::__construct($userIdentifier, $scopes, $client);
     }
 
     /**
-     * Same claims as league/oauth2-server, with the applications in the audience and the roles.
+     * Same claims as league/oauth2-server, with the applications in the audience,
+     * the roles and, in user tokens, the user's uuid.
      */
     private function convertToJWT(): Token
     {
         $this->initJwtConfiguration();
 
-        return $this->jwtConfiguration->builder()
+        $builder = $this->jwtConfiguration->builder()
             ->permittedFor($this->getClient()->getIdentifier(), ...$this->applications)
             ->identifiedBy($this->getIdentifier())
             ->issuedAt(new DateTimeImmutable)
@@ -56,7 +59,12 @@ class AccessToken extends PassportAccessToken
             ->expiresAt($this->getExpiryDateTime())
             ->relatedTo($this->getSubjectIdentifier())
             ->withClaim('scopes', $this->getScopes())
-            ->withClaim('roles', $this->roles)
-            ->getToken($this->jwtConfiguration->signer(), $this->jwtConfiguration->signingKey());
+            ->withClaim('roles', $this->roles);
+
+        if ($this->userUuid !== null) {
+            $builder = $builder->withClaim('uuid', $this->userUuid);
+        }
+
+        return $builder->getToken($this->jwtConfiguration->signer(), $this->jwtConfiguration->signingKey());
     }
 }

@@ -549,6 +549,11 @@ components:
         email: { type: string, format: email, maxLength: 255 }
         password: { type: string, format: password }
         password_confirmation: { type: string, format: password }
+        rut:
+          type: [string, 'null']
+          description: |
+            Opcional. Con o sin puntos (`12.345.678-5` o `12345678-5`); se guarda sin puntos, con guion y el
+            dígito verificador en mayúscula. Debe tener un dígito verificador válido y no estar registrado.
 
     LoginSolicitud:
       type: object
@@ -574,9 +579,18 @@ components:
 
     Usuario:
       type: object
-      required: [id, name, email, email_verified_at, created_at]
+      required: [id, uuid, rut, name, email, email_verified_at, created_at]
       properties:
-        id: { type: integer }
+        id:
+          type: integer
+          description: ID interno de API-Auth. Los demás sistemas no lo guardan; usan `uuid`.
+        uuid:
+          type: string
+          format: uuid
+          description: Identificador público del usuario, no cambia nunca. Es el que guardan los demás sistemas.
+        rut:
+          type: [string, 'null']
+          description: RUT sin puntos, con guion y dígito verificador en mayúscula (`12345678-K`); `null` si no tiene. No viaja en el token.
         name: { type: string }
         email: { type: string, format: email }
         email_verified_at: { type: [string, 'null'], format: date-time }
@@ -584,14 +598,20 @@ components:
 
     TokenActivo:
       type: object
-      required: [active, token_type, client_id, sub, scope, aud, roles, exp, user]
+      required: [active, token_type, client_id, sub, uuid, scope, aud, roles, exp, user]
       properties:
         active: { type: boolean, const: true }
         token_type: { type: string, const: Bearer }
         client_id: { type: string }
         sub:
           type: [string, 'null']
-          description: ID del usuario; `null` en tokens de cliente.
+          description: ID interno del usuario; `null` en tokens de cliente. Los demás sistemas guardan `uuid`, no `sub`.
+        uuid:
+          type: [string, 'null']
+          format: uuid
+          description: |
+            Claim `uuid` del token: identificador público del usuario. `null` en tokens de cliente y en tokens
+            emitidos antes de que existiera la claim.
         scope:
           type: string
           description: Scopes separados por espacio.

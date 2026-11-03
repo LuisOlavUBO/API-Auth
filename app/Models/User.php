@@ -7,7 +7,9 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -15,12 +17,31 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Passport\Contracts\OAuthenticatable;
 use Laravel\Passport\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password'])]
+#[Fillable(['name', 'email', 'password', 'rut'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements OAuthenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, HasUuids, Notifiable;
+
+    /**
+     * The public identifier other systems store goes in "uuid"; "id" stays the
+     * auto-incrementing key.
+     *
+     * @return string[]
+     */
+    public function uniqueIds(): array
+    {
+        return ['uuid'];
+    }
+
+    /**
+     * Always in lowercase: SQL Server returns uniqueidentifier in uppercase.
+     */
+    protected function uuid(): Attribute
+    {
+        return Attribute::get(fn (?string $value) => $value === null ? null : strtolower($value));
+    }
 
     /**
      * Roles of this user, in any application.

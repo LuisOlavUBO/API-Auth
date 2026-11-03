@@ -56,6 +56,7 @@ docs {
   | `email` | string | sí | email, máx. 255, único |
   | `password` | string | sí | política de contraseñas por defecto |
   | `password_confirmation` | string | sí | igual a `password` |
+  | `rut` | string | no | con o sin puntos, dígito verificador válido, único; se guarda como `12345678-5` |
 
   ## Respuesta 201
 
@@ -63,6 +64,8 @@ docs {
   {
     "user": {
       "id": 1,
+      "uuid": "01a1a2ca-60a6-7113-a7c8-ac6d008e5f8b",
+      "rut": null,
       "name": "Usuario de prueba",
       "email": "usuario@example.com",
       "email_verified_at": null,

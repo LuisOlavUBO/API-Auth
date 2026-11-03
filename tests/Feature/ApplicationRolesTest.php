@@ -212,6 +212,17 @@ class ApplicationRolesTest extends TestCase
         $this->assertSame([], $claims['scopes']);
     }
 
+    public function test_a_user_token_carries_the_user_uuid_and_keeps_the_id_as_subject(): void
+    {
+        $login = $this->passwordToken($this->portalClient)->assertOk();
+        $claims = $this->claimsOf($login->json('access_token'));
+        $refreshed = $this->claimsOf($this->refreshToken($this->portalClient, $login->json('refresh_token'))->assertOk()->json('access_token'));
+
+        $this->assertSame($this->ana->uuid, $claims['uuid']);
+        $this->assertSame((string) $this->ana->id, $claims['sub']);
+        $this->assertSame($this->ana->uuid, $refreshed['uuid']);
+    }
+
     public function test_a_client_with_a_role_of_another_application_gets_a_token_for_that_api(): void
     {
         $backend = $this->createClient('portal-backend', 'client-credentials', 'portal');
@@ -233,6 +244,7 @@ class ApplicationRolesTest extends TestCase
         $this->assertSame(['geografia:leer'], $claims['scopes']);
         $this->assertSame(['lector'], $claims['roles']);
         $this->assertSame([strtolower($backend->getKey()), 'api-maestros'], array_map('strtolower', (array) $claims['aud']));
+        $this->assertArrayNotHasKey('uuid', $claims);
     }
 
     public function test_a_client_without_api_and_scope_gets_a_token_without_scopes(): void

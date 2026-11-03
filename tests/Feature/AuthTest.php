@@ -7,6 +7,8 @@ use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\RoleScopeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 class AuthTest extends TestCase
@@ -74,6 +76,64 @@ class AuthTest extends TestCase
         $this->assertDatabaseHas('users', ['email' => 'ana@example.com']);
     }
 
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function register(array $data = []): TestResponse
+    {
+        return $this->postJson('/api/auth/v1/register', [
+            'name' => 'Ana',
+            'email' => 'ana@example.com',
+            'password' => 'secret-password',
+            'password_confirmation' => 'secret-password',
+            ...$data,
+        ]);
+    }
+
+    public function test_register_stores_the_rut_without_dots(): void
+    {
+        $this->register(['rut' => '12.345.678-5'])
+            ->assertCreated()
+            ->assertJsonPath('user.rut', '12345678-5');
+
+        $this->assertDatabaseHas('users', ['email' => 'ana@example.com', 'rut' => '12345678-5']);
+    }
+
+    public function test_register_rejects_a_rut_with_a_wrong_check_digit(): void
+    {
+        $this->register(['rut' => '12345678-9'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['rut'], 'errores');
+    }
+
+    public function test_register_rejects_a_rut_already_registered_even_written_with_dots(): void
+    {
+        User::factory()->create(['rut' => '12345678-5']);
+
+        $this->register(['rut' => '12.345.678-5'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['rut'], 'errores');
+    }
+
+    public function test_several_users_can_register_without_rut(): void
+    {
+        $this->register()->assertCreated()->assertJsonPath('user.rut', null);
+        $this->register(['email' => 'beto@example.com'])->assertCreated();
+
+        $this->assertSame(2, User::whereNull('rut')->count());
+    }
+
+    public function test_users_get_a_unique_uuid_and_keep_a_numeric_id(): void
+    {
+        $ana = $this->createUser();
+        $beto = User::factory()->create();
+
+        $this->assertTrue(Str::isUuid($ana->fresh()->uuid));
+        $this->assertSame($ana->uuid, $ana->fresh()->uuid);
+        $this->assertNotEquals($ana->uuid, $beto->uuid);
+        $this->assertIsInt($ana->id);
+    }
+
     public function test_register_validates_input(): void
     {
         $this->postJson('/api/auth/v1/register', ['email' => 'not-an-email'])
@@ -83,14 +143,19 @@ class AuthTest extends TestCase
 
     public function test_user_can_login_and_fetch_profile(): void
     {
-        $this->createUser();
+        $user = $this->createUser();
+        $user->update(['rut' => '12345678-5']);
 
         $token = $this->login();
+
+        $this->assertStringNotContainsString('12345678', base64_decode(strtr(explode('.', $token['access_token'])[1], '-_', '+/')));
 
         $this->withToken($token['access_token'])
             ->getJson('/api/auth/v1/me')
             ->assertOk()
             ->assertJsonPath('email', 'ana@example.com')
+            ->assertJsonPath('uuid', $user->fresh()->uuid)
+            ->assertJsonPath('rut', '12345678-5')
             ->assertJsonMissingPath('password');
     }
 
