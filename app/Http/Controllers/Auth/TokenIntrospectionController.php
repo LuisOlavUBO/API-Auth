@@ -37,6 +37,7 @@ class TokenIntrospectionController extends Controller
             'token_type' => 'Bearer',
             'client_id' => $claims['client_id'],
             'sub' => $claims['user_id'],
+            'uuid' => $claims['user_uuid'],
             'scope' => implode(' ', $claims['scopes']),
             'aud' => $claims['audiences'],
             'roles' => $claims['roles'],

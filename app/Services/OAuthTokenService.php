@@ -64,9 +64,10 @@ class OAuthTokenService
      * is reported as having no user.
      *
      * "audiences" is the token's "aud" claim: the client ID and, for tokens
-     * issued for one API, that API's name. "roles" is the token's "roles" claim.
+     * issued for one API, that API's name. "roles" is the token's "roles" claim
+     * and "user_uuid" its "uuid" claim (null in client tokens).
      *
-     * @return array{token_id: string, client_id: string, user_id: string|null, scopes: string[], audiences: string[], roles: string[]}|null
+     * @return array{token_id: string, client_id: string, user_id: string|null, user_uuid: string|null, scopes: string[], audiences: string[], roles: string[]}|null
      */
     public function introspect(string $accessToken): ?array
     {
@@ -86,10 +87,23 @@ class OAuthTokenService
             'token_id' => $validated->getAttribute('oauth_access_token_id'),
             'client_id' => $clientId,
             'user_id' => $subject && strcasecmp($subject, $clientId) !== 0 ? $subject : null,
+            'user_uuid' => $this->userUuidOf($accessToken),
             'scopes' => $validated->getAttribute('oauth_scopes', []),
             'audiences' => $this->audiencesOf($accessToken),
             'roles' => $this->rolesOf($accessToken),
         ];
+    }
+
+    /**
+     * The "uuid" claim of a token that the resource server already validated.
+     */
+    protected function userUuidOf(string $accessToken): ?string
+    {
+        $token = (new Parser(new JoseEncoder))->parse($accessToken);
+
+        return $token instanceof UnencryptedToken
+            ? $token->claims()->get('uuid')
+            : null;
     }
 
     /**

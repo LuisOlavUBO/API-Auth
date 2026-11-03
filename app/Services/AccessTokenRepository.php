@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\User;
 use Illuminate\Contracts\Events\Dispatcher;
 use Laravel\Passport\Bridge\AccessTokenRepository as PassportAccessTokenRepository;
 use League\OAuth2\Server\Entities\AccessTokenEntityInterface;
@@ -10,7 +11,7 @@ use League\OAuth2\Server\Entities\ScopeEntityInterface;
 
 /**
  * Passport's repository, creating AccessToken with the applications and roles
- * that ScopeRepository set for it (see TokenAudience).
+ * that ScopeRepository set for it (see TokenAudience) and the user's uuid.
  */
 class AccessTokenRepository extends PassportAccessTokenRepository
 {
@@ -28,7 +29,8 @@ class AccessTokenRepository extends PassportAccessTokenRepository
         ?string $userIdentifier = null
     ): AccessTokenEntityInterface {
         [$applications, $roles] = $this->audience->pull();
+        $userUuid = $userIdentifier === null ? null : User::whereKey($userIdentifier)->first()?->uuid;
 
-        return new AccessToken($userIdentifier, $scopes, $clientEntity, $applications, $roles);
+        return new AccessToken($userIdentifier, $scopes, $clientEntity, $applications, $roles, $userUuid);
     }
 }

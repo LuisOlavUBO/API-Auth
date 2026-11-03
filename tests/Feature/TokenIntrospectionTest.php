@@ -29,7 +29,7 @@ class TokenIntrospectionTest extends TestCase
 
         $this->seed(RoleScopeSeeder::class);
 
-        User::factory()->withRoles(Role::firstWhere('name', 'user'))->create(['email' => 'ana@example.com', 'password' => 'secret-password']);
+        User::factory()->withRoles(Role::firstWhere('name', 'user'))->create(['email' => 'ana@example.com', 'password' => 'secret-password', 'rut' => '12345678-5']);
 
         $this->userToken = $this->postJson('/api/auth/v1/login', [
             'email' => 'ana@example.com',
@@ -58,6 +58,9 @@ class TokenIntrospectionTest extends TestCase
             ->assertOk()
             ->assertJsonPath('active', true)
             ->assertJsonPath('user.email', 'ana@example.com')
+            ->assertJsonPath('uuid', User::firstWhere('email', 'ana@example.com')->uuid)
+            ->assertJsonPath('user.uuid', User::firstWhere('email', 'ana@example.com')->uuid)
+            ->assertJsonPath('user.rut', '12345678-5')
             ->assertJsonStructure(['client_id', 'sub', 'scope', 'exp']);
     }
 
@@ -70,6 +73,7 @@ class TokenIntrospectionTest extends TestCase
             ->assertOk()
             ->assertJsonPath('active', true)
             ->assertJsonPath('sub', null)
+            ->assertJsonPath('uuid', null)
             ->assertJsonPath('user', null)
             ->assertJsonPath('scope', 'introspect');
     }
