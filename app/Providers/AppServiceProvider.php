@@ -9,10 +9,13 @@ use App\Services\TokenAudience;
 use Illuminate\Cache\RateLimiter;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Passport\Bridge\AccessTokenRepository as PassportAccessTokenRepository;
 use Laravel\Passport\Bridge\ScopeRepository as PassportScopeRepository;
 use Laravel\Passport\Passport;
+use SocialiteProviders\Azure\AzureExtendSocialite;
+use SocialiteProviders\Manager\SocialiteWasCalled;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -40,6 +43,9 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configurePassport();
+
+        // Socialite's "azure" driver, for the login with Microsoft Entra ID.
+        Event::listen(SocialiteWasCalled::class, [AzureExtendSocialite::class, 'handle']);
 
         // Registered when the limiter is first used: resolving it here would open
         // the cache store (and its connection) on every artisan command.

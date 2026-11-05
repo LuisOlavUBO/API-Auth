@@ -17,6 +17,8 @@
         input { box-sizing: border-box; width: 100%; margin-bottom: 1rem; padding: .6rem; font: inherit; color: inherit; background: transparent; border: 1px solid var(--borde); border-radius: .25rem; }
         button { width: 100%; padding: .7rem; font: inherit; font-weight: 600; color: #fff; background: var(--acento); border: 0; border-radius: .25rem; cursor: pointer; }
         .error { color: var(--error); }
+        .separador { margin: 1rem 0; text-align: center; }
+        .boton-secundario { display: block; box-sizing: border-box; width: 100%; padding: .7rem; text-align: center; font-weight: 600; color: var(--acento); text-decoration: none; border: 1px solid var(--acento); border-radius: .25rem; }
     </style>
 </head>
 <body>

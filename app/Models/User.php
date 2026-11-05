@@ -17,8 +17,8 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Passport\Contracts\OAuthenticatable;
 use Laravel\Passport\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'rut'])]
-#[Hidden(['password', 'remember_token'])]
+#[Fillable(['name', 'email', 'password', 'rut', 'entra_oid'])]
+#[Hidden(['password', 'remember_token', 'entra_oid'])]
 class User extends Authenticatable implements OAuthenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -74,6 +74,34 @@ class User extends Authenticatable implements OAuthenticatable
             ->orderBy('name')
             ->pluck('name')
             ->all();
+    }
+
+    /**
+     * The user of a Microsoft Entra ID account: the one with its object id, else the one with
+     * its email, which gets linked (and keeps its password), else a new user without password
+     * and without roles. Null when the email belongs to a user linked to another account.
+     */
+    public static function fromMicrosoft(string $oid, string $email, string $name): ?self
+    {
+        $linked = static::where('entra_oid', $oid)->first();
+
+        if ($linked !== null) {
+            return $linked;
+        }
+
+        $sameEmail = static::where('email', $email)->first();
+
+        if ($sameEmail === null) {
+            return static::create(['name' => $name, 'email' => $email, 'entra_oid' => $oid]);
+        }
+
+        if ($sameEmail->entra_oid !== null) {
+            return null;
+        }
+
+        $sameEmail->update(['entra_oid' => $oid]);
+
+        return $sameEmail;
     }
 
     /**

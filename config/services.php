@@ -28,6 +28,15 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    // Microsoft Entra ID for the central login. Only the UBO tenant: never "common".
+    // The login with Microsoft is enabled when client_id is set.
+    'azure' => [
+        'client_id' => env('ENTRA_CLIENT_ID'),
+        'client_secret' => env('ENTRA_CLIENT_SECRET'),
+        'redirect' => env('ENTRA_REDIRECT_URI'),
+        'tenant' => env('ENTRA_TENANT_ID'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

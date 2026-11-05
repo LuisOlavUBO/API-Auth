@@ -3,6 +3,7 @@
 use App\Http\ApiPrefix;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\LogoutController;
+use App\Http\Controllers\Auth\MicrosoftLoginController;
 use App\Http\Middleware\RequirePkce;
 use App\Http\Middleware\RequireRolesInClientApplication;
 use Illuminate\Support\Facades\Route;
@@ -17,6 +18,9 @@ Route::redirect('docs/swagger', '/'.ApiPrefix::BASE.'/docs/swagger');
 Route::prefix(ApiPrefix::BASE)->group(function () {
     Route::get('login', [LoginController::class, 'show'])->name('login');
     Route::post('login', [LoginController::class, 'store'])->middleware('throttle:auth');
+
+    Route::get('login/microsoft', [MicrosoftLoginController::class, 'redirect'])->name('login.microsoft');
+    Route::get('login/microsoft/callback', [MicrosoftLoginController::class, 'callback'])->name('login.microsoft.callback');
 
     Route::get('logout', [LogoutController::class, 'show'])->name('logout');
     Route::post('logout', [LogoutController::class, 'store']);
