@@ -169,6 +169,16 @@ class AuthTest extends TestCase
         ])->assertUnauthorized()->assertJsonPath('error', 'invalid_grant');
     }
 
+    public function test_a_user_without_password_cannot_login_with_one(): void
+    {
+        User::factory()->create(['email' => 'ana@example.com', 'password' => null]);
+
+        $this->postJson('/api/auth/v1/login', [
+            'email' => 'ana@example.com',
+            'password' => 'anything',
+        ])->assertUnauthorized()->assertJsonPath('error', 'invalid_grant');
+    }
+
     public function test_me_requires_a_token(): void
     {
         $this->getJson('/api/auth/v1/me')->assertUnauthorized();

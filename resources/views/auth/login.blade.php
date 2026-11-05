@@ -19,4 +19,12 @@
 
         <button type="submit">Ingresar</button>
     </form>
+
+    @if (\App\Http\Controllers\Auth\MicrosoftLoginController::isEnabled())
+        <p class="separador">o</p>
+        <a class="boton-secundario" href="{{ route('login.microsoft') }}">Ingresar con Microsoft</a>
+    @endif
+    @error('microsoft')
+        <p class="error">{{ $message }}</p>
+    @enderror
 @endsection

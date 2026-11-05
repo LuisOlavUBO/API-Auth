@@ -11,7 +11,8 @@ info:
     **Login central (monolitos):** la contraseña solo se escribe en IAM. El satélite manda al navegador a
     `GET /api/auth/oauth/authorize` (código con PKCE `S256`), IAM muestra su login y devuelve un `code` que el
     satélite canjea en `POST /api/auth/oauth/token`. `GET /api/auth/logout` cierra la sesión central y revoca los
-    tokens. Estas páginas responden HTML y redirecciones, no problem+json.
+    tokens. El login también ofrece "Ingresar con Microsoft" (Entra ID, solo el tenant de la UBO). Estas páginas
+    responden HTML y redirecciones, no problem+json.
 
     **Otros microservicios:** piden su token a `POST /api/auth/oauth/token` con `client_credentials`. Lo recomendado
     es pedir un token **por API** con el parámetro `api`: el token nombra la API en su `aud`
@@ -444,6 +445,46 @@ paths:
             Retry-After:
               description: Segundos que hay que esperar antes de reintentar.
               schema: { type: integer }
+
+  /api/auth/login/microsoft:
+    get:
+      tags: [Login central]
+      summary: Ingresar con Microsoft
+      description: |
+        Botón "Ingresar con Microsoft" del formulario de login: redirige al inicio de sesión de Microsoft Entra ID
+        del tenant de la UBO. Solo existe si Entra ID está configurado (`ENTRA_CLIENT_ID`); si no, responde 404.
+      operationId: ingresarConMicrosoft
+      security: []
+      responses:
+        '302':
+          description: Al inicio de sesión de Microsoft (`login.microsoftonline.com/<tenant>`).
+          headers:
+            Location: { schema: { type: string } }
+        '404':
+          description: Entra ID no está configurado.
+
+  /api/auth/login/microsoft/callback:
+    get:
+      tags: [Login central]
+      summary: Vuelta desde Microsoft
+      description: |
+        Microsoft redirige aquí con `code` y `state`. IAM identifica a la persona por su `oid`; la primera vez
+        vincula al usuario con el mismo email (que conserva su contraseña) o crea uno sin contraseña y sin roles.
+        Inicia la sesión de IAM y vuelve al destino original. Si Microsoft devuelve un error, el `state` no
+        corresponde o el email ya está vinculado a otra cuenta, vuelve al formulario con el mensaje y sin sesión.
+      operationId: vueltaDesdeMicrosoft
+      security: []
+      parameters:
+        - { name: code, in: query, required: false, schema: { type: string } }
+        - { name: state, in: query, required: false, schema: { type: string } }
+        - { name: error, in: query, required: false, schema: { type: string } }
+      responses:
+        '302':
+          description: Sesión iniciada (al destino original) o error (de vuelta al formulario).
+          headers:
+            Location: { schema: { type: string } }
+        '404':
+          description: Entra ID no está configurado.
 
   /api/auth/logout:
     get:

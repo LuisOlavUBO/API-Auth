@@ -21,6 +21,7 @@ final class ApiPrefix
      */
     public const WEB_PAGES = [
         self::BASE.'/login',
+        self::BASE.'/login/*',
         self::BASE.'/logout',
         self::BASE.'/oauth/authorize',
     ];

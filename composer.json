@@ -12,7 +12,9 @@
         "php": "^8.3",
         "laravel/framework": "^13.17",
         "laravel/passport": "^13.0",
+        "laravel/socialite": "^5.31",
         "laravel/tinker": "^3.0",
+        "socialiteproviders/microsoft-azure": "^5.2",
         "ubo/common": "^2.3"
     },
     "require-dev": {

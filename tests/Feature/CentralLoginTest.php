@@ -167,6 +167,18 @@ class CentralLoginTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_a_user_without_password_cannot_use_the_password_form(): void
+    {
+        User::factory()->create(['email' => 'carla@example.com', 'password' => null]);
+
+        $this->from('/api/auth/login')
+            ->post('/api/auth/login', ['email' => 'carla@example.com', 'password' => 'anything'])
+            ->assertRedirect('/api/auth/login')
+            ->assertSessionHasErrors('email');
+
+        $this->assertGuest();
+    }
+
     public function test_invalid_input_redirects_back_with_errors_instead_of_a_problem(): void
     {
         $this->from('/api/auth/login')

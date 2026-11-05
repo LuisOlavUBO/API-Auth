@@ -212,6 +212,28 @@ La contraseña solo se escribe en IAM. Un satélite monolito manda el navegador 
 - `OAUTH_TOKEN_RATE_LIMIT`: solicitudes por minuto a `/api/auth/oauth/token` por `client_id` (120 por omisión).
 - Si estaban definidas, quitar `SESSION_PATH` y bajar `PASSPORT_REFRESH_TOKEN_TTL` a 120.
 
+### Ingresar con Microsoft (Entra ID)
+
+El login de IAM ofrece "Ingresar con Microsoft" junto al formulario de email y contraseña, que se mantiene. Es otra forma de iniciar la misma sesión de IAM: el resto del flujo (código, PKCE, roles, logout) no cambia. Solo entran cuentas del tenant de la UBO. Sin `ENTRA_CLIENT_ID` el botón no aparece y `/api/auth/login/microsoft` responde 404.
+
+1. En el portal de Azure, **Microsoft Entra ID → Registros de aplicaciones → Nuevo registro**: nombre `IAM UBO`, cuentas **solo de este directorio organizativo** (inquilino único) y URI de redirección **Web** `https://<host>/api/auth/login/microsoft/callback` (una por entorno; en local, `http://localhost:8000/api/auth/login/microsoft/callback`).
+2. En **Certificados y secretos**, crear un secreto de cliente y anotar su valor (se muestra una sola vez; anotar también cuándo vence para renovarlo).
+3. En **Permisos de API** basta el permiso delegado `Microsoft Graph / User.Read`, que viene por omisión. El tenant de la UBO no deja que cada persona lo acepte: un administrador de Entra debe pulsar **Conceder consentimiento de administrador para UBO** una vez. Sin eso, Microsoft muestra "Aprobación necesaria" a todos.
+4. Cargar en el `.env.prod` (o el `.env` local) y reiniciar el contenedor:
+   - `ENTRA_TENANT_ID`: id del directorio (inquilino). Nunca `common`.
+   - `ENTRA_CLIENT_ID`: id de la aplicación (cliente).
+   - `ENTRA_CLIENT_SECRET`: valor del secreto.
+   - `ENTRA_REDIRECT_URI`: la misma URI de redirección del paso 1.
+
+Cómo se identifica a la persona:
+
+- Por su `oid` (identificador de objeto de Entra ID), guardado en `users.entra_oid`. Si cambia su email en Microsoft, sigue siendo el mismo usuario.
+- La primera vez, si ya existe un usuario con su email (`mail` de Microsoft o, si no tiene, su `userPrincipalName`), se vincula a ese usuario, que **conserva su contraseña**.
+- Si ese email ya está vinculado a otra cuenta de Microsoft, ve "No pudimos asociar tu cuenta de Microsoft, contacta a soporte" y no inicia sesión.
+- Si no existe, se crea un usuario sin contraseña y **sin roles**: los satélites le muestran "No tienes acceso a este sistema, contacta a soporte" hasta que se le asignen. Un usuario sin contraseña no puede entrar con email y clave.
+
+El logout central cierra la sesión de IAM pero no la de Microsoft: si la persona vuelve a elegir "Ingresar con Microsoft" en el mismo navegador, entra sin escribir su clave. Lo mismo pasa con `prompt=login`.
+
 ## Integrar otro microservicio
 
 1. Registrar la aplicación del servicio, crear su cliente y darle roles (sin roles no puede pedir ningún scope). Todo cliente pertenece a una aplicación, por eso se crea con `oauth:client` y no con `passport:client`:
@@ -403,4 +425,4 @@ php artisan test
 - [app/Exceptions/OAuthTokenException.php](app/Exceptions/OAuthTokenException.php) — fallos de login y refresh: código OAuth, título y qué se registra en el log.
 - [config/ubo-common.php](config/ubo-common.php) — módulos de UBO.Common: Tracing, Problems, Health (`/api/auth/v1/salud`) y SqlServer.
 - [routes/api.php](routes/api.php) — rutas.
-- [routes/web.php](routes/web.php) — login, logout y autorización del [login central](#login-central-sso-de-los-satélites-monolito); [LoginController](app/Http/Controllers/Auth/LoginController.php), [LogoutController](app/Http/Controllers/Auth/LogoutController.php), los middleware [RequirePkce](app/Http/Middleware/RequirePkce.php) y [RequireRolesInClientApplication](app/Http/Middleware/RequireRolesInClientApplication.php) y las vistas en [resources/views/auth](resources/views/auth).
+- [routes/web.php](routes/web.php) — login, logout y autorización del [login central](#login-central-sso-de-los-satélites-monolito); [LoginController](app/Http/Controllers/Auth/LoginController.php), [LogoutController](app/Http/Controllers/Auth/LogoutController.php), [MicrosoftLoginController](app/Http/Controllers/Auth/MicrosoftLoginController.php) (Entra ID), los middleware [RequirePkce](app/Http/Middleware/RequirePkce.php) y [RequireRolesInClientApplication](app/Http/Middleware/RequireRolesInClientApplication.php) y las vistas en [resources/views/auth](resources/views/auth).
