@@ -29,7 +29,7 @@ class RoleScopeSeeder extends Seeder
      */
     protected array $roles = [
         'user' => [
-            'description' => 'Default role for registered users',
+            'description' => 'Basic user of api-auth',
             'scopes' => ['user:read', 'user:write'],
         ],
         'admin' => [

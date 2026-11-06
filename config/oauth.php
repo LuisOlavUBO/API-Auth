@@ -7,7 +7,7 @@ return [
     | Password Grant Client
     |--------------------------------------------------------------------------
     |
-    | Client used internally by the /api/auth/v1 endpoints (register, login,
+    | Client used internally by the /api/auth/v1 endpoints (login and
     | refresh) to issue tokens through Passport's password grant. Create it
     | with "php artisan oauth:client <name> --application=api-auth --type=password"
     | and copy the values here.
@@ -54,15 +54,10 @@ return [
     | The scope catalog lives in the "oauth_scopes" table and each role is
     | granted a subset of it ("oauth_scope_role"). Manage them with the
     | "oauth:scope" and "oauth:assign-role" commands. Default scopes are
-    | requested when a login sends no "scope"; new users get default_role.
+    | requested when a login sends no "scope".
     |
     */
 
     'default_scopes' => ['user:read'],
-
-    'default_role' => env('OAUTH_DEFAULT_ROLE', 'user'),
-
-    // Application that owns default_role and the clients of /api/auth/v1.
-    'application' => env('OAUTH_APPLICATION', 'api-auth'),
 
 ];

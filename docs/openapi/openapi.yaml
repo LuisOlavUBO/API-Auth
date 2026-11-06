@@ -5,7 +5,8 @@ info:
   description: |
     Microservicio OAuth2 que emite y valida los tokens JWT (RS256) del resto de las APIs.
 
-    **Usuarios finales:** registro, login, refresh, perfil y logout con el password grant. El secreto del
+    **Usuarios finales:** login, refresh, perfil y logout con el password grant. No hay registro público: los
+    usuarios se crean al entrar por primera vez con Microsoft. El secreto del
     cliente nunca sale del servidor: estos endpoints lo usan internamente.
 
     **Login central (monolitos):** la contraseña solo se escribe en IAM. El satélite manda al navegador a
@@ -62,34 +63,6 @@ tags:
     description: Estado del servicio.
 
 paths:
-  /api/auth/v1/register:
-    post:
-      tags: [Usuarios]
-      summary: Registrar un usuario
-      description: Crea la cuenta con el rol por defecto y devuelve su primer par de tokens.
-      operationId: registrar
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/RegistroSolicitud' }
-      responses:
-        '201':
-          description: Usuario creado.
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - type: object
-                    required: [user]
-                    properties:
-                      user: { $ref: '#/components/schemas/Usuario' }
-                  - $ref: '#/components/schemas/ParTokens'
-        '422': { $ref: '#/components/responses/Validacion' }
-        '429': { $ref: '#/components/responses/LimiteExcedido' }
-        '500': { $ref: '#/components/responses/ErrorInterno' }
-
   /api/auth/v1/login:
     post:
       tags: [Usuarios]
@@ -582,20 +555,6 @@ components:
             introspect: Validar tokens de otros servicios.
 
   schemas:
-    RegistroSolicitud:
-      type: object
-      required: [name, email, password, password_confirmation]
-      properties:
-        name: { type: string, maxLength: 255 }
-        email: { type: string, format: email, maxLength: 255 }
-        password: { type: string, format: password }
-        password_confirmation: { type: string, format: password }
-        rut:
-          type: [string, 'null']
-          description: |
-            Opcional. Con o sin puntos (`12.345.678-5` o `12345678-5`); se guarda sin puntos, con guion y el
-            dígito verificador en mayúscula. Debe tener un dígito verificador válido y no estar registrado.
-
     LoginSolicitud:
       type: object
       required: [email, password]

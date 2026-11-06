@@ -4,11 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
-use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
-use App\Models\Application;
-use App\Models\Role;
-use App\Models\User;
 use App\Services\OAuthTokenService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,30 +12,6 @@ use Illuminate\Http\Request;
 class AuthController extends Controller
 {
     public function __construct(protected OAuthTokenService $tokens) {}
-
-    /**
-     * Create a user account and return its first token pair.
-     */
-    public function register(RegisterRequest $request): JsonResponse
-    {
-        $user = new User($request->validated());
-        $user->save();
-        $defaultRoleId = Role::where([
-            'application_id' => Application::where('name', config('oauth.application'))->value('id'),
-            'name' => config('oauth.default_role'),
-        ])->value('id');
-
-        if ($defaultRoleId) {
-            $user->roles()->attach($defaultRoleId);
-        }
-
-        $token = $this->tokens->issueForCredentials($user->email, $request->input('password'));
-
-        return response()->json([
-            'user' => new UserResource($user),
-            ...$token,
-        ], 201);
-    }
 
     /**
      * Exchange email/password for an access/refresh token pair.

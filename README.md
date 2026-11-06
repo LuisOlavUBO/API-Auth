@@ -41,7 +41,7 @@ Los tests corren contra SQL Server, en la base `apiauth_test` (ver [Tests](#test
 
 ### Caché y rate limiter
 
-`CACHE_STORE=database`: lo único que usa la caché es el rate limiter de `register`/`login`/`refresh`, que cuenta los intentos en la tabla `cache` de `apiauth`. No usa Redis a propósito: para este volumen la base alcanza, y un servicio más sería otro punto de falla para el login del que dependen todas las APIs. Las sesiones (`SESSION_DRIVER`) y la cola también están en la base de datos: la API no usa sesiones fuera de la página de Swagger.
+`CACHE_STORE=database`: lo único que usa la caché es el rate limiter de `login`/`refresh`, que cuenta los intentos en la tabla `cache` de `apiauth`. No usa Redis a propósito: para este volumen la base alcanza, y un servicio más sería otro punto de falla para el login del que dependen todas las APIs. Las sesiones (`SESSION_DRIVER`) y la cola también están en la base de datos: la API no usa sesiones fuera de la página de Swagger.
 
 En producción (o contenedores) puedes pasar las claves por entorno en vez de archivos: `PASSPORT_PRIVATE_KEY` y `PASSPORT_PUBLIC_KEY`.
 
@@ -101,7 +101,6 @@ El compose fuerza `APP_ENV=production`, `APP_DEBUG=false` y `LOG_CHANNEL=stderr`
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| POST | `/register` | — | `name`, `email`, `password`, `password_confirmation` → usuario + tokens |
 | POST | `/login` | — | `email`, `password`, `scope?` → `access_token`, `refresh_token`, `expires_in` |
 | POST | `/refresh` | — | `refresh_token` → nuevo par (el refresh anterior queda revocado) |
 | GET | `/me` | Bearer (usuario, scope `user:read`) | Perfil del usuario del token |
@@ -112,7 +111,7 @@ El compose fuerza `APP_ENV=production`, `APP_DEBUG=false` y `LOG_CHANNEL=stderr`
 
 Además `POST /api/auth/oauth/token` es el endpoint estándar OAuth2 de Passport, usado por los microservicios para el grant `client_credentials`. Junto con `GET /api/auth/oauth/authorize` del [login central](#login-central-sso-de-los-satélites-monolito) son las únicas rutas de Passport registradas: las demás (aprobar o rechazar, `/oauth/device`, `/oauth/token/refresh`) están apagadas con `Passport::ignoreRoutes()`. El login central agrega las páginas web `GET/POST /api/auth/login` y `GET/POST /api/auth/logout`, que responden HTML y no problem+json. `GET /api/auth/v1/salud` responde `{"estado": "OK", "base_datos": "OK"}` o `503` si la base no responde (misma forma que en API-Maestros). `/up` solo indica que Laravel arrancó.
 
-Los endpoints públicos de `register`/`login`/`refresh` tienen rate limit de 10 req/min por email+IP.
+Los endpoints públicos de `login`/`refresh` tienen rate limit de 10 req/min por email+IP.
 
 ### Errores (RFC 9457)
 
@@ -275,7 +274,7 @@ Una **aplicación** es un satélite, una API o un monolito. Los scopes, los role
 - `applications`: las aplicaciones (`api-auth`, `api-maestros`, `portal`, ...). Cada una usa solo lo que necesita: scopes si valida accesos, roles si tiene usuarios o los ofrece a quien la consume, clientes si pide tokens.
 - `oauth_scopes`: catálogo de scopes que existen (`user:read`, `geografia:leer`, ...). Cada scope pertenece a una aplicación (`application_id`, obligatorio). El nombre sigue la convención `dominio:permiso` y es único en toda la organización.
 - `roles` + `oauth_scope_role`: qué scopes concede cada rol, de cualquier aplicación. Un rol pertenece a una aplicación y su nombre es único dentro de ella; en los comandos se escribe `<aplicación>/<rol>`.
-- `role_user`: roles de cada usuario (varios, en una o varias aplicaciones). Los usuarios nuevos reciben el rol `OAUTH_DEFAULT_ROLE` (por defecto `user`) de la aplicación `OAUTH_APPLICATION` (por defecto `api-auth`).
+- `role_user`: roles de cada usuario (varios, en una o varias aplicaciones). No hay registro público: los usuarios se crean sin roles al entrar por primera vez con Microsoft y los roles se asignan con `oauth:assign-role`.
 - `oauth_clients.application_id`: la aplicación de cada cliente (obligatorio). Un cliente de `client_credentials` puede tener roles de cualquier aplicación (`oauth_client_role`), normalmente los que ofrece cada API que consume.
 
 Carga inicial (aplicación `api-auth`; roles `user`, `admin` e `introspector`; scopes `user:read`, `user:write`, `introspect`):

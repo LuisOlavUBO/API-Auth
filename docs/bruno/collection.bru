@@ -20,12 +20,12 @@ docs {
   | `api` | API para la que se pide un token de cliente (p. ej. `api-maestros`) |
   | `callback_url`, `code_client_id`, `code_client_secret` | Redirección y cliente `authorization-code` del login central (`code_client_secret` es secreta) |
 
-  2. Ejecutar **Usuarios / Iniciar sesión** (o **Registrar**): guarda `accessToken` y `refreshToken` como variables de ejecución, que usan las demás solicitudes de usuario.
+  2. Ejecutar **Usuarios / Iniciar sesión**: guarda `accessToken` y `refreshToken` como variables de ejecución, que usan las demás solicitudes de usuario.
   3. Para los endpoints de servicio, ejecutar **Servicios / Token de cliente (introspect)**: guarda `clientToken`, que usa **Introspección**.
 
   ## Autenticación
 
-  - **Token de usuario** (password grant): lo emiten `/register`, `/login` y `/refresh`. Se envía como `Authorization: Bearer {{accessToken}}`.
+  - **Token de usuario** (password grant): lo emiten `/login` y `/refresh`. Se envía como `Authorization: Bearer {{accessToken}}`.
   - **Token del login central** (código con PKCE): lo emite `/api/auth/oauth/token` tras el login de IAM; ver la carpeta **Login central**.
   - **Token de cliente** (`client_credentials`): lo emite `POST /api/auth/oauth/token` con el `client_id` y `client_secret` del servicio. Se envía como `Authorization: Bearer {{clientToken}}`.
 
@@ -60,7 +60,7 @@ docs {
 
   ## Rate limit y tracing
 
-  - `register`, `login` y `refresh`: 10 solicitudes por minuto por email + IP.
+  - `login` y `refresh`: 10 solicitudes por minuto por email + IP.
   - Toda respuesta trae el header `X-Trace-Id` con el `trace_id` de la petición. Si se envía un `traceparent` (W3C Trace Context), la traza continúa.
 
   ## Documentación relacionada

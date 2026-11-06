@@ -6,38 +6,15 @@ Permite que las personas creen una cuenta, inicien sesión con email y contrase�
 
 ## Requirements
 
-### Requirement: Registro de usuarios
-El sistema SHALL permitir crear una cuenta en `POST /api/auth/v1/register` con `name`, `email` y `password` confirmada (`password_confirmation`), y opcionalmente `rut`. El email MUST ser único. El `rut`, si se envía, MUST tener un dígito verificador válido y no estar registrado, y se acepta con o sin puntos. La respuesta exitosa SHALL ser 201 con el usuario creado y su primer par de tokens (`token_type`, `expires_in`, `access_token`, `refresh_token`).
+### Requirement: Sin registro público
+El sistema MUST NOT permitir que una persona cree su propia cuenta. `POST /api/auth/v1/register` SHALL responder 404. Los usuarios se crean al entrar por primera vez con Microsoft Entra ID, sin roles.
 
-#### Scenario: Registro exitoso
-- **WHEN** se envía un nombre, un email no registrado y una contraseña válida con su confirmación
-- **THEN** el sistema responde 201 con `user` (incluye `id` y `email`) y un par de tokens, y el usuario queda guardado
-
-#### Scenario: Datos de registro inválidos
-- **WHEN** se envía un registro sin nombre, con un email mal formado o sin contraseña
-- **THEN** el sistema responde 422 indicando los errores de `name`, `email` y `password`
-
-#### Scenario: Registro con RUT
-- **WHEN** se registra un usuario con `rut` igual a `12.345.678-5`
-- **THEN** el sistema responde 201 y `user.rut` es `12345678-5`
-
-#### Scenario: RUT con dígito verificador inválido
-- **WHEN** se registra un usuario con `rut` igual a `12345678-9`
-- **THEN** el sistema responde 422 indicando el error de `rut`
-
-#### Scenario: RUT ya registrado
-- **WHEN** se registra un usuario con un `rut` que ya tiene otro usuario, aunque se escriba con puntos
-- **THEN** el sistema responde 422 indicando el error de `rut`
-
-### Requirement: Rol por defecto al registrarse
-Todo usuario creado por registro SHALL recibir el rol configurado como rol por defecto (por omisión, `user`) de la aplicación `api-auth`.
-
-#### Scenario: El usuario registrado tiene el rol por defecto
-- **WHEN** una persona se registra correctamente
-- **THEN** su cuenta queda asociada al rol `user` de `api-auth`
+#### Scenario: Intento de registro
+- **WHEN** se envía `POST /api/auth/v1/register` con `name`, `email`, `password` y `password_confirmation` válidos
+- **THEN** el sistema responde 404 y no se crea ningún usuario
 
 ### Requirement: Login con email y contraseña
-El sistema SHALL emitir un par de tokens (acceso y refresh) en `POST /api/auth/v1/login` a cambio de `email` y `password` válidos, con un `scope` opcional separado por espacios. Las credenciales incorrectas MUST responder 401 con el código `invalid_grant`. El secreto del cliente OAuth usado internamente MUST NOT exponerse a quien llama.
+El sistema SHALL emitir un par de tokens (acceso y refresh) en `POST /api/auth/v1/login` a cambio de `email` y `password` válidos, con un `scope` opcional separado por espacios. Las credenciales incorrectas MUST responder 401 con el código `invalid_grant`. Un usuario sin contraseña (creado al entrar con Microsoft) MUST NOT poder iniciar sesión con email y contraseña, ni aquí ni en el login web. El secreto del cliente OAuth usado internamente MUST NOT exponerse a quien llama.
 
 #### Scenario: Login exitoso
 - **WHEN** un usuario existente envía su email y su contraseña correctos
@@ -45,6 +22,10 @@ El sistema SHALL emitir un par de tokens (acceso y refresh) en `POST /api/auth/v
 
 #### Scenario: Contraseña incorrecta
 - **WHEN** un usuario envía una contraseña incorrecta
+- **THEN** el sistema responde 401 con `error` igual a `invalid_grant`
+
+#### Scenario: Usuario sin contraseña
+- **WHEN** se envía el email de un usuario sin contraseña con cualquier valor de `password`
 - **THEN** el sistema responde 401 con `error` igual a `invalid_grant`
 
 ### Requirement: Renovación de sesión con refresh token
@@ -88,7 +69,7 @@ El sistema SHALL revocar, en `POST /api/auth/v1/logout-all`, todos los access to
 - **THEN** el sistema responde 200 y ninguno de sus access tokens queda vigente
 
 ### Requirement: Límite de intentos en endpoints de credenciales
-Los endpoints de registro, login y refresh SHALL aceptar como máximo 10 solicitudes por minuto por combinación de email e IP. Al superarlo MUST responder 429 con la cabecera `Retry-After`.
+Los endpoints de login y refresh SHALL aceptar como máximo 10 solicitudes por minuto por combinación de email e IP. Al superarlo MUST responder 429 con la cabecera `Retry-After`.
 
 #### Scenario: Se supera el límite de intentos
 - **WHEN** se hacen 11 intentos de login en un minuto con el mismo email desde la misma IP
@@ -109,7 +90,7 @@ Los access tokens de usuario SHALL vencer por defecto a los 60 minutos y los ref
 Todo usuario SHALL tener un `uuid` único, asignado al crearse, que no cambia nunca. Es el identificador con que los demás sistemas se refieren al usuario; el `id` numérico es interno de API-Auth y los satélites MUST NOT guardarlo.
 
 #### Scenario: Usuario nuevo
-- **WHEN** se registra un usuario
+- **WHEN** se crea un usuario
 - **THEN** el usuario tiene un `uuid` distinto al de cualquier otro usuario
 
 #### Scenario: El uuid no cambia
@@ -120,7 +101,7 @@ Todo usuario SHALL tener un `uuid` único, asignado al crearse, que no cambia nu
 Un usuario SHALL poder tener un `rut`, opcional y único entre los usuarios que lo tienen. Se MUST guardar sin puntos, con guion y con el dígito verificador en mayúscula (`12345678-K`). El RUT MUST NOT incluirse en los access tokens.
 
 #### Scenario: Usuario sin RUT
-- **WHEN** se registran dos usuarios sin `rut`
+- **WHEN** se crean dos usuarios sin `rut`
 - **THEN** ambos quedan guardados con `rut` en `null`
 
 #### Scenario: El RUT no viaja en el token
