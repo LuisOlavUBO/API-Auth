@@ -37,7 +37,7 @@ Todo usuario creado por registro SHALL recibir el rol configurado como rol por d
 - **THEN** su cuenta queda asociada al rol `user` de `api-auth`
 
 ### Requirement: Login con email y contraseña
-El sistema SHALL emitir un par de tokens (acceso y refresh) en `POST /api/auth/v1/login` a cambio de `email` y `password` válidos, con un `scope` opcional separado por espacios. Las credenciales incorrectas MUST responder 401 con el código `invalid_grant`. El secreto del cliente OAuth usado internamente MUST NOT exponerse a quien llama.
+El sistema SHALL emitir un par de tokens (acceso y refresh) en `POST /api/auth/v1/login` a cambio de `email` y `password` válidos, con un `scope` opcional separado por espacios. Las credenciales incorrectas MUST responder 401 con el código `invalid_grant`. Un usuario sin contraseña (creado al entrar con Microsoft) MUST NOT poder iniciar sesión con email y contraseña, ni aquí ni en el login web. El secreto del cliente OAuth usado internamente MUST NOT exponerse a quien llama.
 
 #### Scenario: Login exitoso
 - **WHEN** un usuario existente envía su email y su contraseña correctos
@@ -45,6 +45,10 @@ El sistema SHALL emitir un par de tokens (acceso y refresh) en `POST /api/auth/v
 
 #### Scenario: Contraseña incorrecta
 - **WHEN** un usuario envía una contraseña incorrecta
+- **THEN** el sistema responde 401 con `error` igual a `invalid_grant`
+
+#### Scenario: Usuario sin contraseña
+- **WHEN** se envía el email de un usuario sin contraseña con cualquier valor de `password`
 - **THEN** el sistema responde 401 con `error` igual a `invalid_grant`
 
 ### Requirement: Renovación de sesión con refresh token
