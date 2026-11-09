@@ -264,7 +264,7 @@ class OAuthScopeCommandsTest extends TestCase
         $this->seed(RoleScopeSeeder::class);
 
         $this->assertSame(1, Application::where('name', 'api-auth')->count());
-        $this->assertSame(3, Role::count());
+        $this->assertSame(4, Role::count());
         $this->assertEqualsCanonicalizing(['extra:leer', 'user:read', 'user:write'], $admin->oauthScopes()->pluck('name')->all());
     }
 }

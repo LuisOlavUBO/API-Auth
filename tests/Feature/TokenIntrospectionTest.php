@@ -110,6 +110,16 @@ class TokenIntrospectionTest extends TestCase
             ->assertExactJson(['active' => false]);
     }
 
+    public function test_the_tokens_of_a_disabled_user_are_inactive(): void
+    {
+        User::firstWhere('email', 'ana@example.com')->forceFill(['disabled_at' => now()])->save();
+
+        $this->withToken($this->serviceToken())
+            ->postJson('/api/auth/v1/introspect', ['token' => $this->userToken])
+            ->assertOk()
+            ->assertExactJson(['active' => false]);
+    }
+
     public function test_introspection_requires_the_introspect_scope(): void
     {
         $this->withToken($this->serviceToken('user:read'))

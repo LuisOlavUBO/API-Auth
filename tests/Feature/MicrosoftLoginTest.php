@@ -93,6 +93,19 @@ class MicrosoftLoginTest extends TestCase
         $this->assertSame('ana@ubo.cl', $ana->fresh()->email);
     }
 
+    public function test_a_disabled_user_cannot_log_in_with_microsoft(): void
+    {
+        $oid = (string) Str::uuid();
+        User::factory()->disabled()->create(['email' => 'ana@ubo.cl', 'entra_oid' => $oid]);
+        $this->fakeAccount($oid, 'ana@ubo.cl');
+
+        $this->get('/api/auth/login/microsoft/callback')
+            ->assertRedirect(route('login'))
+            ->assertSessionHasErrors(['microsoft' => 'No tienes acceso, contacta a soporte.']);
+
+        $this->assertGuest();
+    }
+
     public function test_the_first_time_the_user_with_the_same_email_is_linked_and_keeps_the_password(): void
     {
         $oid = (string) Str::uuid();

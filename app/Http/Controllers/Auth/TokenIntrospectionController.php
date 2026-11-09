@@ -32,6 +32,11 @@ class TokenIntrospectionController extends Controller
         $token = Passport::token()->newQuery()->find($claims['token_id']);
         $user = $claims['user_id'] ? User::find($claims['user_id']) : null;
 
+        // The token of a disabled user stops working at once for the APIs that introspect.
+        if ($user?->isDisabled()) {
+            return response()->json(['active' => false]);
+        }
+
         return response()->json([
             'active' => true,
             'token_type' => 'Bearer',

@@ -4,6 +4,8 @@ use App\Http\ApiPrefix;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\Auth\MicrosoftLoginController;
+use App\Http\Controllers\Auth\PasswordController;
+use App\Http\Middleware\RequireActiveAccount;
 use App\Http\Middleware\RequirePkce;
 use App\Http\Middleware\RequireRolesInClientApplication;
 use Illuminate\Support\Facades\Route;
@@ -25,8 +27,13 @@ Route::prefix(ApiPrefix::BASE)->group(function () {
     Route::get('logout', [LogoutController::class, 'show'])->name('logout');
     Route::post('logout', [LogoutController::class, 'store']);
 
+    Route::middleware('auth')->group(function () {
+        Route::get('password', [PasswordController::class, 'show'])->name('password');
+        Route::post('password', [PasswordController::class, 'store']);
+    });
+
     // Passport's authorization endpoint, the only one of its web routes in use (see AppServiceProvider).
     Route::get('oauth/authorize', [AuthorizationController::class, 'authorize'])
-        ->middleware([RequirePkce::class, RequireRolesInClientApplication::class])
+        ->middleware([RequirePkce::class, RequireActiveAccount::class, RequireRolesInClientApplication::class])
         ->name('passport.authorizations.authorize');
 });

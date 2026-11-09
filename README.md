@@ -101,9 +101,10 @@ UPDATE oauth_clients SET revoked = 1 WHERE id = '<PASSPORT_PASSWORD_CLIENT_ID>';
 | POST | `/logout` | Bearer (usuario) | Revoca el access token actual y su refresh token |
 | POST | `/logout-all` | Bearer (usuario) | Revoca todas las sesiones del usuario |
 | POST | `/introspect` | Bearer (cliente, scope `introspect`) | `token` → `{ active, sub, client_id, scope, exp, user }` |
+| POST | `/users/{uuid}/revoke` | Bearer (cliente, scope `sessions:revoke`) | Revoca todos los tokens del usuario y cierra su sesión de IAM → `204` |
 | GET | `/public-key` | — | Clave pública PEM para verificar JWT localmente |
 
-Además `POST /api/auth/oauth/token` es el endpoint estándar OAuth2 de Passport, usado por los microservicios para el grant `client_credentials` y por los satélites para canjear el código del login central y renovar sus tokens (`refresh_token`). No hay `/v1/login` ni `/v1/refresh`, y el password grant está apagado (`unsupported_grant_type`). Junto con `GET /api/auth/oauth/authorize` del [login central](#login-central-sso-de-los-satélites-monolito) son las únicas rutas de Passport registradas: las demás (aprobar o rechazar, `/oauth/device`, `/oauth/token/refresh`) están apagadas con `Passport::ignoreRoutes()`. El login central agrega las páginas web `GET/POST /api/auth/login` y `GET/POST /api/auth/logout`, que responden HTML y no problem+json. `GET /api/auth/v1/salud` responde `{"estado": "OK", "base_datos": "OK"}` o `503` si la base no responde (misma forma que en API-Maestros). `/up` solo indica que Laravel arrancó.
+Además `POST /api/auth/oauth/token` es el endpoint estándar OAuth2 de Passport, usado por los microservicios para el grant `client_credentials` y por los satélites para canjear el código del login central y renovar sus tokens (`refresh_token`). No hay `/v1/login` ni `/v1/refresh`, y el password grant está apagado (`unsupported_grant_type`). Junto con `GET /api/auth/oauth/authorize` del [login central](#login-central-sso-de-los-satélites-monolito) son las únicas rutas de Passport registradas: las demás (aprobar o rechazar, `/oauth/device`, `/oauth/token/refresh`) están apagadas con `Passport::ignoreRoutes()`. El login central agrega las páginas web `GET/POST /api/auth/login`, `GET/POST /api/auth/logout` y `GET/POST /api/auth/password`, que responden HTML y no problem+json. `GET /api/auth/v1/salud` responde `{"estado": "OK", "base_datos": "OK"}` o `503` si la base no responde (misma forma que en API-Maestros). `/up` solo indica que Laravel arrancó.
 
 El formulario de login (`POST /api/auth/login`) tiene rate limit de 10 req/min por email+IP, y `/api/auth/oauth/token` de 120 req/min por cliente.
 
@@ -180,6 +181,7 @@ La contraseña solo se escribe en IAM. Un satélite monolito manda el navegador 
 
    - Sin `code_challenge` o con `plain` responde `400` antes de pedir la clave. Una `redirect_uri` que el cliente no tiene registrada responde un error y no redirige.
    - Una persona sin ningún rol en la aplicación del cliente ve "No tienes acceso a este sistema, contacta a soporte" (403): no recibe código ni vuelve al satélite.
+   - Con una contraseña temporal, la persona la cambia en `/api/auth/password` antes de recibir el código (también si entró con Microsoft). Una persona dada de baja con la sesión abierta pierde la sesión y ve "No tienes acceso a este sistema, contacta a soporte" (403).
    - `prompt=login` cierra la sesión de IAM y vuelve a pedir la clave, aunque hubiera sesión. Afecta a la sesión de IAM completa: los tokens de los otros satélites siguen hasta que venzan.
 
 3. Con el `code` recibido, el satélite pide sus tokens:
@@ -189,6 +191,12 @@ La contraseña solo se escribe en IAM. Un satélite monolito manda el navegador 
    ```
 
 4. Logout central: el satélite manda a `GET /api/auth/logout?client_id=<id>&return=https://portal.ubo.cl/` (el `return` debe tener el mismo origen que una redirección registrada del cliente). Cierra la sesión de IAM, revoca todos los tokens de la persona en todos los satélites y vuelve a `return`; si no coincide, muestra "Sesión cerrada". La página de IAM tiene su propio botón (`POST /api/auth/logout`).
+
+**Estado de la cuenta:** API-IAM administra los usuarios y escribe dos columnas de `users` que API-Auth solo lee: `disabled_at` (baja) y `temporary_password_expires_at` (contraseña temporal y su vencimiento). API-Auth escribe en `users` solo la contraseña (al cambiar la temporal, que deja la columna en `null`) y `entra_oid` (al vincular la cuenta de Microsoft).
+
+- Un usuario dado de baja no entra al login web (ve el mismo mensaje que con una clave incorrecta) ni con Microsoft ("No tienes acceso, contacta a soporte"), no canjea códigos ni renueva tokens (`invalid_grant`), y `/introspect` reporta sus tokens como inactivos. Las APIs que validan solo la firma aceptan su access token hasta que vence (60 minutos).
+- Una contraseña temporal vencida no sirve: "Tu contraseña temporal venció, contacta a soporte".
+- Al dar de baja o cambiar accesos, API-IAM llama a `POST /api/auth/v1/users/{uuid}/revoke` con un cliente que tenga el rol `api-auth/session-revoker` (scope `sessions:revoke`). En un ambiente existente, el scope y el rol se crean con `php artisan db:seed --class=RoleScopeSeeder`, que solo agrega lo que falta.
 
 **Tiempos:** la sesión de IAM dura 120 minutos sin uso (`SESSION_LIFETIME`) y su cookie va acotada a `/api/auth`, `HttpOnly` y `SameSite=Lax`. El refresh token vence a los 120 minutos de inactividad (`PASSPORT_REFRESH_TOKEN_TTL`, se renueva con cada uso).
 
@@ -265,7 +273,7 @@ Una **aplicación** es un satélite, una API o un monolito. Los scopes, los role
 - `role_user`: roles de cada usuario (varios, en una o varias aplicaciones). No hay registro público: los usuarios se crean sin roles al entrar por primera vez con Microsoft y los roles se asignan con `oauth:assign-role`.
 - `oauth_clients.application_id`: la aplicación de cada cliente (obligatorio). Un cliente de `client_credentials` puede tener roles de cualquier aplicación (`oauth_client_role`), normalmente los que ofrece cada API que consume.
 
-Carga inicial (aplicación `api-auth`; roles `user`, `admin` e `introspector`; scopes `user:read`, `user:write`, `introspect`):
+Carga inicial (aplicación `api-auth`; roles `user`, `admin`, `introspector` y `session-revoker`; scopes `user:read`, `user:write`, `introspect` y `sessions:revoke`):
 
 ```bash
 php artisan db:seed --class=RoleScopeSeeder
@@ -405,10 +413,11 @@ php artisan test
 - [app/Services/OAuthTokenService.php](app/Services/OAuthTokenService.php) — valida y revoca tokens usando el servidor OAuth2 de Passport en proceso.
 - [app/Http/Controllers/Auth/AuthController.php](app/Http/Controllers/Auth/AuthController.php) — me, logout y logout-all.
 - [app/Http/Controllers/Auth/TokenIntrospectionController.php](app/Http/Controllers/Auth/TokenIntrospectionController.php) — introspección y clave pública.
+- [app/Http/Controllers/Auth/SessionRevocationController.php](app/Http/Controllers/Auth/SessionRevocationController.php) — revocación de las sesiones de un usuario, para API-IAM.
 - [app/Providers/AppServiceProvider.php](app/Providers/AppServiceProvider.php) — grants, TTL, rate limiting y binding del ScopeRepository.
 - [app/Services/ScopeRepository.php](app/Services/ScopeRepository.php) — catálogo de scopes en BD y filtrado por rol.
 - [app/Services/AccessToken.php](app/Services/AccessToken.php), [AccessTokenRepository.php](app/Services/AccessTokenRepository.php) y [TokenAudience.php](app/Services/TokenAudience.php) — el `aud` de los tokens por API: `ScopeRepository` valida `api` y lo deja en `TokenAudience`, y el repositorio crea el token con esa API.
 - [bootstrap/app.php](bootstrap/app.php) — errores RFC 9457 de `/api/*` con el `ProblemRenderer` de UBO.Common.
 - [config/ubo-common.php](config/ubo-common.php) — módulos de UBO.Common: Tracing, Problems, Health (`/api/auth/v1/salud`) y SqlServer.
 - [routes/api.php](routes/api.php) — rutas.
-- [routes/web.php](routes/web.php) — login, logout y autorización del [login central](#login-central-sso-de-los-satélites-monolito); [LoginController](app/Http/Controllers/Auth/LoginController.php), [LogoutController](app/Http/Controllers/Auth/LogoutController.php), [MicrosoftLoginController](app/Http/Controllers/Auth/MicrosoftLoginController.php) (Entra ID), los middleware [RequirePkce](app/Http/Middleware/RequirePkce.php) y [RequireRolesInClientApplication](app/Http/Middleware/RequireRolesInClientApplication.php) y las vistas en [resources/views/auth](resources/views/auth).
+- [routes/web.php](routes/web.php) — login, logout y autorización del [login central](#login-central-sso-de-los-satélites-monolito); [LoginController](app/Http/Controllers/Auth/LoginController.php), [LogoutController](app/Http/Controllers/Auth/LogoutController.php), [MicrosoftLoginController](app/Http/Controllers/Auth/MicrosoftLoginController.php) (Entra ID), [PasswordController](app/Http/Controllers/Auth/PasswordController.php) (contraseña temporal), los middleware [RequirePkce](app/Http/Middleware/RequirePkce.php), [RequireActiveAccount](app/Http/Middleware/RequireActiveAccount.php) y [RequireRolesInClientApplication](app/Http/Middleware/RequireRolesInClientApplication.php) y las vistas en [resources/views/auth](resources/views/auth).

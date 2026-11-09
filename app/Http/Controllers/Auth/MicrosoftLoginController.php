@@ -61,6 +61,10 @@ class MicrosoftLoginController extends Controller
             return $this->failed('No pudimos asociar tu cuenta de Microsoft, contacta a soporte.');
         }
 
+        if ($user->isDisabled()) {
+            return $this->failed('No tienes acceso, contacta a soporte.');
+        }
+
         Auth::login($user);
         $request->session()->regenerate();
 

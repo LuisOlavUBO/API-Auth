@@ -22,6 +22,7 @@ class RoleScopeSeeder extends Seeder
         'user:read' => 'Read the authenticated user profile',
         'user:write' => 'Update the authenticated user profile',
         'introspect' => 'Validate access tokens issued by this service',
+        'sessions:revoke' => 'Close every session of a user (POST /v1/users/{uuid}/revoke)',
     ];
 
     /**
@@ -39,6 +40,10 @@ class RoleScopeSeeder extends Seeder
         'introspector' => [
             'description' => 'Services that validate user tokens through /introspect',
             'scopes' => ['introspect'],
+        ],
+        'session-revoker' => [
+            'description' => 'Services that close the sessions of a user (API-IAM)',
+            'scopes' => ['sessions:revoke'],
         ],
     ];
 
