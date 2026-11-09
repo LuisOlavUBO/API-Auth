@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Auth\SessionRevocationController;
 use App\Http\Controllers\Auth\TokenIntrospectionController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Passport\Http\Controllers\AccessTokenController;
@@ -21,6 +22,10 @@ Route::prefix('v1')->group(function () {
     // Service-to-service endpoints (client credentials grant).
     Route::post('introspect', [TokenIntrospectionController::class, 'introspect'])
         ->middleware(EnsureClientIsResourceOwner::using('introspect'));
+
+    Route::post('users/{uuid}/revoke', SessionRevocationController::class)
+        ->whereUuid('uuid')
+        ->middleware(EnsureClientIsResourceOwner::using('sessions:revoke'));
 
     Route::get('public-key', [TokenIntrospectionController::class, 'publicKey']);
 

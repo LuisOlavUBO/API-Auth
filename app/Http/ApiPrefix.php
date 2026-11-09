@@ -23,6 +23,7 @@ final class ApiPrefix
         self::BASE.'/login',
         self::BASE.'/login/*',
         self::BASE.'/logout',
+        self::BASE.'/password',
         self::BASE.'/oauth/authorize',
     ];
 }

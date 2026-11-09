@@ -10,6 +10,7 @@ use App\Models\User;
 use Database\Seeders\RoleScopeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 /**
@@ -282,5 +283,110 @@ class CentralLoginTest extends TestCase
 
         $this->assertGuest();
         $this->assertSame(0, DB::table('oauth_access_tokens')->where('revoked', false)->count());
+    }
+
+    public function test_a_disabled_user_cannot_exchange_a_code(): void
+    {
+        $code = $this->queryOf($this->actingAs($this->ana)->get($this->authorizeUrl($this->client)))['code'];
+        $this->ana->forceFill(['disabled_at' => now()])->save();
+
+        $this->exchange($this->client, $code)
+            ->assertJsonPath('error', 'invalid_grant')
+            ->assertJsonMissingPath('access_token');
+    }
+
+    public function test_a_disabled_user_cannot_refresh(): void
+    {
+        $tokens = $this->tokensFor($this->ana, $this->client);
+        $this->ana->forceFill(['disabled_at' => now()])->save();
+
+        $this->refreshTokens($this->client, $tokens['refresh_token'])
+            ->assertJsonPath('error', 'invalid_grant')
+            ->assertJsonMissingPath('access_token');
+    }
+
+    public function test_a_disabled_user_gets_the_wrong_credentials_message(): void
+    {
+        $this->ana->forceFill(['disabled_at' => now()])->save();
+
+        $this->from('/api/auth/login')
+            ->post('/api/auth/login', ['email' => 'ana@example.com', 'password' => 'secret-password'])
+            ->assertRedirect('/api/auth/login')
+            ->assertSessionHasErrors(['email' => 'Correo o contraseña incorrectos.']);
+
+        $this->assertGuest();
+    }
+
+    public function test_an_expired_temporary_password_is_rejected(): void
+    {
+        $this->ana->forceFill(['temporary_password_expires_at' => now()->subMinute()])->save();
+
+        $this->from('/api/auth/login')
+            ->post('/api/auth/login', ['email' => 'ana@example.com', 'password' => 'secret-password'])
+            ->assertRedirect('/api/auth/login')
+            ->assertSessionHasErrors(['email' => 'Tu contraseña temporal venció, contacta a soporte.']);
+
+        $this->assertGuest();
+    }
+
+    public function test_a_temporary_password_must_be_changed_before_going_back_to_the_satellite(): void
+    {
+        $this->ana->forceFill(['temporary_password_expires_at' => now()->addHours(72)])->save();
+
+        $this->get($this->authorizeUrl($this->client))->assertRedirect(route('login'));
+        $this->post('/api/auth/login', ['email' => 'ana@example.com', 'password' => 'secret-password'])
+            ->assertRedirect(route('password'));
+
+        $this->assertAuthenticatedAs($this->ana);
+        $this->get(route('password'))->assertOk()->assertSee('name="password_confirmation"', false);
+
+        $back = $this->post(route('password'), [
+            'password' => 'una-clave-nueva-2026',
+            'password_confirmation' => 'una-clave-nueva-2026',
+        ])->assertRedirectContains('/api/auth/oauth/authorize?');
+
+        $this->assertFalse($this->ana->fresh()->hasTemporaryPassword());
+        $this->assertTrue(Hash::check('una-clave-nueva-2026', $this->ana->fresh()->password));
+
+        $code = $this->queryOf($this->get($back->headers->get('Location')))['code'];
+        $this->exchange($this->client, $code)->assertOk();
+    }
+
+    public function test_the_authorization_asks_to_change_a_temporary_password_first(): void
+    {
+        $this->ana->forceFill(['temporary_password_expires_at' => now()->addHours(72)])->save();
+
+        $this->actingAs($this->ana)->get($this->authorizeUrl($this->client))
+            ->assertRedirect(route('password'));
+    }
+
+    public function test_the_new_password_cannot_be_the_temporary_one(): void
+    {
+        $this->ana->forceFill(['temporary_password_expires_at' => now()->addHours(72)])->save();
+
+        $this->actingAs($this->ana)->from(route('password'))->post(route('password'), [
+            'password' => 'secret-password',
+            'password_confirmation' => 'secret-password',
+        ])->assertRedirect(route('password'))->assertSessionHasErrors('password');
+
+        $this->assertTrue($this->ana->fresh()->hasTemporaryPassword());
+    }
+
+    public function test_the_password_page_is_only_for_temporary_passwords(): void
+    {
+        $this->actingAs($this->ana)->get(route('password'))->assertRedirect(route('login'));
+    }
+
+    public function test_a_person_disabled_with_an_open_session_gets_no_code(): void
+    {
+        $this->actingAs($this->ana);
+        $this->ana->forceFill(['disabled_at' => now()])->save();
+
+        $this->get($this->authorizeUrl($this->client))
+            ->assertForbidden()
+            ->assertSee('No tienes acceso a este sistema, contacta a soporte.')
+            ->assertHeaderMissing('Location');
+
+        $this->assertGuest();
     }
 }

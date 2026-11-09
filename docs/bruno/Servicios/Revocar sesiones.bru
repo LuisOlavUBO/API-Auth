@@ -1,0 +1,50 @@
+meta {
+  name: Revocar sesiones
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/auth/v1/users/{{user_uuid}}/revoke
+  body: none
+  auth: oauth2
+}
+
+auth:oauth2 {
+  grant_type: client_credentials
+  access_token_url: {{baseUrl}}/api/auth/oauth/token
+  client_id: {{client_id}}
+  client_secret: {{client_secret}}
+  scope: sessions:revoke
+  credentials_placement: body
+  credentials_id: revoker
+  token_placement: header
+  token_header_prefix: Bearer
+  auto_fetch_token: true
+}
+
+tests {
+  test("responde 204", function () {
+    expect(res.status).to.equal(204);
+  });
+}
+
+docs {
+  # Cerrar todas las sesiones de un usuario
+
+  `POST /api/auth/v1/users/{uuid}/revoke` · Bearer de cliente con scope `sessions:revoke`
+
+  Revoca todos los access y refresh tokens del usuario y cierra su sesión de IAM. Lo usa API-IAM cuando cambia o da de baja una cuenta. Responde `204` también si el usuario no tenía sesiones.
+
+  Usa la autenticación OAuth2 de Bruno (`client_credentials`, scope `sessions:revoke`) con `client_id` y `client_secret` del entorno: el cliente necesita el rol `api-auth/session-revoker`. Completa `user_uuid` en el entorno con el `uuid` del usuario (lo devuelve **Usuarios / Perfil**).
+
+  Las APIs que validan solo la firma del JWT aceptan el access token hasta que vence; las que usan **Introspección** lo ven inactivo de inmediato.
+
+  ## Errores
+
+  | Estado | `error` | Cuándo |
+  |---|---|---|
+  | 401 | `NO_AUTENTICADO` | Falta el token, no es de cliente, o es inválido, vencido o revocado |
+  | 403 | `SCOPE_INSUFICIENTE` | El token no tiene `sessions:revoke` |
+  | 404 | — | No existe un usuario con ese `uuid` |
+}

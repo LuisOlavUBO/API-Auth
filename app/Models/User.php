@@ -105,6 +105,27 @@ class User extends Authenticatable implements OAuthenticatable
     }
 
     /**
+     * A disabled user gets no tokens and cannot log in.
+     */
+    public function isDisabled(): bool
+    {
+        return $this->disabled_at !== null;
+    }
+
+    /**
+     * Whether the password is a temporary one, which must be changed on the next login.
+     */
+    public function hasTemporaryPassword(): bool
+    {
+        return $this->temporary_password_expires_at !== null;
+    }
+
+    public function temporaryPasswordExpired(): bool
+    {
+        return $this->hasTemporaryPassword() && $this->temporary_password_expires_at->isPast();
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -114,6 +135,8 @@ class User extends Authenticatable implements OAuthenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'disabled_at' => 'datetime',
+            'temporary_password_expires_at' => 'datetime',
         ];
     }
 }

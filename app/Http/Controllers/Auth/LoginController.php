@@ -43,12 +43,26 @@ class LoginController extends Controller
             'password.required' => 'Ingresa tu contraseña.',
         ]);
 
-        if (! Auth::attempt($credentials)) {
+        // A disabled user sees the same message as a wrong password: it does not reveal the account.
+        if (! Auth::validate($credentials) || Auth::getLastAttempted()->isDisabled()) {
             return back()->withInput($request->only('email'))
                 ->withErrors(['email' => 'Correo o contraseña incorrectos.']);
         }
 
+        $user = Auth::getLastAttempted();
+
+        if ($user->temporaryPasswordExpired()) {
+            return back()->withInput($request->only('email'))
+                ->withErrors(['email' => 'Tu contraseña temporal venció, contacta a soporte.']);
+        }
+
+        Auth::login($user);
         $request->session()->regenerate();
+
+        // The pending destination stays in the session: the password page goes on to it.
+        if ($user->hasTemporaryPassword()) {
+            return redirect()->route('password');
+        }
 
         return redirect()->intended(route('login'));
     }

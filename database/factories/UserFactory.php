@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\Role;
 use App\Models\User;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -41,6 +42,26 @@ class UserFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'email_verified_at' => null,
+        ]);
+    }
+
+    /**
+     * Indicate that the user was disabled.
+     */
+    public function disabled(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'disabled_at' => now()->subMinute(),
+        ]);
+    }
+
+    /**
+     * Indicate that the password is a temporary one, valid for 72 hours (or until the given time).
+     */
+    public function withTemporaryPassword(?DateTimeInterface $expiresAt = null): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'temporary_password_expires_at' => $expiresAt ?? now()->addHours(72),
         ]);
     }
 

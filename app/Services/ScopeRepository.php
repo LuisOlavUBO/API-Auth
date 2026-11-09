@@ -97,6 +97,12 @@ class ScopeRepository extends PassportScopeRepository
     protected function finalizeUserScopes(array $scopes, string $grantType, ClientEntityInterface $clientEntity, string $userIdentifier): array
     {
         $user = User::find($userIdentifier);
+
+        // Every user token (code exchange and refresh) passes here: a disabled user gets none.
+        if ($user?->isDisabled()) {
+            throw OAuthServerException::invalidGrant('The user is disabled.');
+        }
+
         $applicationId = $this->applicationIdOf($clientEntity->getIdentifier());
 
         $allowed = $user && $applicationId ? $user->allowedScopeNames($applicationId) : [];

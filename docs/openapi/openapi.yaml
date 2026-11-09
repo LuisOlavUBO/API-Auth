@@ -117,7 +117,7 @@ paths:
       description: |
         Valida un token (firma, vencimiento y revocación) al estilo RFC 7662. Quien llama se autentica con
         un token de cliente (`client_credentials`) que tenga el scope `introspect`. Un token inválido,
-        vencido o revocado responde `200` con `{"active": false}`.
+        vencido o revocado, o de un usuario dado de baja, responde `200` con `{"active": false}`.
 
         Los errores son de quien llama, no del token consultado: `401` si su propio token no sirve (UBO.Common
         lo renueva y reintenta una vez), `403` si le falta `introspect` y `422` si falta `token`.
@@ -147,6 +147,35 @@ paths:
         '401': { $ref: '#/components/responses/NoAutenticado' }
         '403': { $ref: '#/components/responses/ScopeFaltante' }
         '422': { $ref: '#/components/responses/Validacion' }
+
+  /api/auth/v1/users/{uuid}/revoke:
+    post:
+      tags: [Servicios]
+      summary: Cerrar todas las sesiones de un usuario
+      description: |
+        Revoca todos los access y refresh tokens del usuario y cierra su sesión de IAM, para que API-IAM
+        corte el acceso cuando cambia o da de baja una cuenta. Quien llama se autentica con un token de
+        cliente que tenga el scope `sessions:revoke` (rol `session-revoker`). Responde `204` también si el
+        usuario no tenía sesiones. Las APIs que validan solo la firma aceptan el access token hasta que vence.
+      operationId: revocarSesiones
+      security:
+        - tokenServicio: [sessions:revoke]
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          description: Identificador público del usuario.
+          schema: { type: string, format: uuid }
+      responses:
+        '204':
+          description: Sesiones cerradas.
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/ScopeFaltante' }
+        '404':
+          description: No existe un usuario con ese `uuid`.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problema' }
 
   /api/auth/v1/public-key:
     get:
@@ -332,7 +361,9 @@ paths:
       description: |
         Inicia la sesión de IAM con `email` y `password` (formulario con token CSRF) y redirige al destino
         original, o al formulario si no hay uno. Con credenciales incorrectas o datos inválidos vuelve al
-        formulario con el mensaje. Rate limit: 10 solicitudes por minuto por email + IP.
+        formulario con el mensaje; un usuario dado de baja ve el mismo mensaje. Con una contraseña temporal
+        vigente va a `/api/auth/password`; si venció, vuelve con "Tu contraseña temporal venció, contacta a
+        soporte". Rate limit: 10 solicitudes por minuto por email + IP.
       operationId: enviarLogin
       security: []
       requestBody:
@@ -432,6 +463,48 @@ paths:
           headers:
             Location: { schema: { type: string } }
 
+  /api/auth/password:
+    get:
+      tags: [Login central]
+      summary: Cambio de la contraseña temporal
+      description: |
+        Página HTML para cambiar una contraseña temporal. Requiere la sesión de IAM; sin sesión va al login, y
+        sin contraseña temporal también. Mientras la contraseña sea temporal, `oauth/authorize` no entrega
+        códigos y envía aquí.
+      operationId: formularioContrasena
+      security: []
+      responses:
+        '200':
+          description: Formulario de cambio de contraseña.
+          content:
+            text/html: { schema: { type: string } }
+        '302':
+          description: Al login, si no hay sesión o la contraseña no es temporal.
+    post:
+      tags: [Login central]
+      summary: Guardar la nueva contraseña
+      description: |
+        Guarda la nueva contraseña (formulario con token CSRF), que debe cumplir la política de contraseñas,
+        venir confirmada y ser distinta de la temporal. La contraseña deja de ser temporal y la persona sigue
+        a la solicitud de autorización pendiente. Con datos inválidos vuelve al formulario con el mensaje.
+      operationId: guardarContrasena
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [password, password_confirmation]
+              properties:
+                password: { type: string, format: password }
+                password_confirmation: { type: string, format: password }
+      responses:
+        '302':
+          description: Al destino pendiente (o al login), o de vuelta al formulario con el error.
+          headers:
+            Location: { schema: { type: string } }
+
   /api/auth/v1/salud:
     get:
       tags: [Salud]
@@ -491,6 +564,7 @@ components:
           tokenUrl: /api/auth/oauth/token
           scopes:
             introspect: Validar tokens de otros servicios.
+            sessions:revoke: Cerrar todas las sesiones de un usuario.
 
   schemas:
     Usuario:
