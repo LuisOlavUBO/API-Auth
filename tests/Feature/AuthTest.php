@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
 use App\Models\OAuthScope;
 use App\Models\Role;
 use App\Models\User;
@@ -14,16 +15,13 @@ class AuthTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected Client $client;
+
     protected function setUp(): void
     {
         parent::setUp();
 
-        $client = $this->createClient('Test Password Client', 'password');
-
-        config([
-            'oauth.password_client.id' => $client->getKey(),
-            'oauth.password_client.secret' => $client->plainSecret,
-        ]);
+        $this->client = $this->createCodeClient();
 
         $this->seed(RoleScopeSeeder::class);
     }
@@ -37,27 +35,21 @@ class AuthTest extends TestCase
     }
 
     /**
+     * Tokens of ana through the central login.
+     *
      * @return array<string, mixed>
      */
     protected function login(?string $scope = null): array
     {
-        return $this->postJson('/api/auth/v1/login', array_filter([
-            'email' => 'ana@example.com',
-            'password' => 'secret-password',
-            'scope' => $scope,
-        ]))->assertOk()->json();
+        return $this->tokensFor(User::firstWhere('email', 'ana@example.com'), $this->client, $scope);
     }
 
     /**
-     * Read the "scopes" claim straight from the JWT payload.
-     *
      * @return string[]
      */
     protected function scopesOf(string $accessToken): array
     {
-        $payload = explode('.', $accessToken)[1];
-
-        return json_decode(base64_decode(strtr($payload, '-_', '+/')), true)['scopes'];
+        return $this->claimsOf($accessToken)['scopes'];
     }
 
     public function test_people_cannot_register_themselves(): void
@@ -70,6 +62,25 @@ class AuthTest extends TestCase
         ])->assertNotFound();
 
         $this->assertDatabaseCount('users', 0);
+    }
+
+    public function test_people_cannot_get_tokens_from_the_api_with_their_password(): void
+    {
+        $this->createUser();
+        $credentials = ['email' => 'ana@example.com', 'password' => 'secret-password'];
+
+        $this->postJson('/api/auth/v1/login', $credentials)->assertNotFound();
+        $this->postJson('/api/auth/v1/refresh', ['refresh_token' => 'any'])->assertNotFound();
+
+        $this->postJson('/api/auth/oauth/token', [
+            'grant_type' => 'password',
+            'client_id' => $this->client->getKey(),
+            'client_secret' => $this->client->plainSecret,
+            'username' => $credentials['email'],
+            'password' => $credentials['password'],
+        ])->assertJsonPath('error', 'unsupported_grant_type')->assertJsonMissingPath('access_token');
+
+        $this->assertDatabaseCount('oauth_access_tokens', 0);
     }
 
     public function test_several_users_can_be_saved_without_rut(): void
@@ -90,7 +101,7 @@ class AuthTest extends TestCase
         $this->assertIsInt($ana->id);
     }
 
-    public function test_user_can_login_and_fetch_profile(): void
+    public function test_user_can_fetch_the_profile(): void
     {
         $user = $this->createUser();
         $user->update(['rut' => '12345678-5']);
@@ -108,26 +119,6 @@ class AuthTest extends TestCase
             ->assertJsonMissingPath('password');
     }
 
-    public function test_login_with_wrong_password_is_rejected(): void
-    {
-        $this->createUser();
-
-        $this->postJson('/api/auth/v1/login', [
-            'email' => 'ana@example.com',
-            'password' => 'wrong-password',
-        ])->assertUnauthorized()->assertJsonPath('error', 'invalid_grant');
-    }
-
-    public function test_a_user_without_password_cannot_login_with_one(): void
-    {
-        User::factory()->create(['email' => 'ana@example.com', 'password' => null]);
-
-        $this->postJson('/api/auth/v1/login', [
-            'email' => 'ana@example.com',
-            'password' => 'anything',
-        ])->assertUnauthorized()->assertJsonPath('error', 'invalid_grant');
-    }
-
     public function test_me_requires_a_token(): void
     {
         $this->getJson('/api/auth/v1/me')->assertUnauthorized();
@@ -138,15 +129,23 @@ class AuthTest extends TestCase
         $this->createUser();
         $first = $this->login();
 
-        $second = $this->postJson('/api/auth/v1/refresh', ['refresh_token' => $first['refresh_token']])
-            ->assertOk()
-            ->json();
+        $second = $this->refreshTokens($this->client, $first['refresh_token'])->assertOk()->json();
 
         $this->assertNotSame($first['access_token'], $second['access_token']);
+        $this->assertNotSame($first['refresh_token'], $second['refresh_token']);
 
         // The old refresh token is single-use.
-        $this->postJson('/api/auth/v1/refresh', ['refresh_token' => $first['refresh_token']])
-            ->assertUnauthorized();
+        $this->refreshTokens($this->client, $first['refresh_token'])->assertJsonPath('error', 'invalid_grant');
+    }
+
+    public function test_a_refresh_token_does_not_work_with_another_client(): void
+    {
+        $this->createUser();
+        $token = $this->login();
+
+        $this->refreshTokens($this->createCodeClient(name: 'otro-portal'), $token['refresh_token'])
+            ->assertJsonMissingPath('access_token')
+            ->assertJsonPath('error', 'invalid_grant');
     }
 
     public function test_logout_revokes_access_and_refresh_tokens(): void
@@ -159,8 +158,7 @@ class AuthTest extends TestCase
         $this->assertDatabaseMissing('oauth_access_tokens', ['revoked' => false]);
         $this->assertDatabaseMissing('oauth_refresh_tokens', ['revoked' => false]);
 
-        $this->postJson('/api/auth/v1/refresh', ['refresh_token' => $token['refresh_token']])
-            ->assertUnauthorized();
+        $this->refreshTokens($this->client, $token['refresh_token'])->assertJsonMissingPath('access_token');
     }
 
     public function test_logout_all_revokes_every_session(): void
@@ -175,14 +173,7 @@ class AuthTest extends TestCase
         $this->assertDatabaseMissing('oauth_access_tokens', ['revoked' => false]);
     }
 
-    public function test_login_without_scope_receives_the_default_scope(): void
-    {
-        $this->createUser();
-
-        $this->assertSame(['user:read'], $this->scopesOf($this->login()['access_token']));
-    }
-
-    public function test_login_can_request_scopes_granted_to_the_role(): void
+    public function test_a_login_can_request_scopes_granted_to_the_role(): void
     {
         $this->createUser();
 
@@ -191,22 +182,29 @@ class AuthTest extends TestCase
         $this->assertSame(['user:read', 'user:write'], $this->scopesOf($token['access_token']));
     }
 
-    public function test_login_rejects_scopes_outside_the_role(): void
+    public function test_a_login_without_scope_gets_every_scope_of_the_role(): void
     {
         $this->createUser();
 
-        foreach (['introspect', '*', 'does-not-exist'] as $scope) {
-            $this->postJson('/api/auth/v1/login', [
-                'email' => 'ana@example.com',
-                'password' => 'secret-password',
-                'scope' => $scope,
-            ])->assertBadRequest()->assertJsonPath('error', 'invalid_scope');
-        }
+        $this->assertSame(['user:read', 'user:write'], $this->scopesOf($this->login()['access_token']));
     }
 
-    public function test_users_without_a_role_get_tokens_without_scopes(): void
+    public function test_a_login_rejects_scopes_outside_the_role(): void
     {
-        User::factory()->create(['email' => 'ana@example.com', 'password' => 'secret-password']);
+        $this->createUser();
+
+        $response = $this->actingAs(User::first())->get($this->authorizeUrl($this->client, ['scope' => 'introspect']));
+
+        $this->exchange($this->client, $this->queryOf($response)['code'])
+            ->assertBadRequest()
+            ->assertJsonPath('error', 'invalid_scope')
+            ->assertJsonMissingPath('access_token');
+    }
+
+    public function test_roles_without_scopes_give_tokens_without_scopes(): void
+    {
+        $role = Role::factory()->for($this->client->application)->create(['name' => 'sin-permisos']);
+        User::factory()->withRoles($role)->create(['email' => 'ana@example.com', 'password' => 'secret-password']);
 
         $token = $this->login();
 
@@ -233,9 +231,7 @@ class AuthTest extends TestCase
             OAuthScope::firstWhere('name', 'user:write')
         );
 
-        $refreshed = $this->postJson('/api/auth/v1/refresh', ['refresh_token' => $token['refresh_token']])
-            ->assertOk()
-            ->json();
+        $refreshed = $this->refreshTokens($this->client, $token['refresh_token'])->assertOk()->json();
 
         $this->assertSame(['user:read'], $this->scopesOf($refreshed['access_token']));
     }

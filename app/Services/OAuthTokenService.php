@@ -2,58 +2,22 @@
 
 namespace App\Services;
 
-use App\Exceptions\OAuthTokenException;
 use App\Models\User;
-use GuzzleHttp\Psr7\Response as Psr7Response;
 use GuzzleHttp\Psr7\ServerRequest;
 use Laravel\Passport\Passport;
 use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Token\Parser;
 use Lcobucci\JWT\Token\RegisteredClaims;
 use Lcobucci\JWT\UnencryptedToken;
-use League\OAuth2\Server\AuthorizationServer;
 use League\OAuth2\Server\Exception\OAuthServerException;
 use League\OAuth2\Server\ResourceServer;
 
 /**
- * Issues and validates tokens by talking to Passport's OAuth2 server
- * in-process, so the public auth endpoints never expose client secrets.
+ * Validates and revokes tokens through Passport's OAuth2 resource server, in-process.
  */
 class OAuthTokenService
 {
-    public function __construct(
-        protected AuthorizationServer $authorizationServer,
-        protected ResourceServer $resourceServer,
-    ) {}
-
-    /**
-     * Issue an access/refresh token pair using the password grant.
-     *
-     * @return array{token_type: string, expires_in: int, access_token: string, refresh_token: string}
-     */
-    public function issueForCredentials(string $email, string $password, ?string $scope = null): array
-    {
-        return $this->requestToken([
-            'grant_type' => 'password',
-            'username' => $email,
-            'password' => $password,
-            'scope' => $scope ?? implode(' ', config('oauth.default_scopes')),
-        ]);
-    }
-
-    /**
-     * Exchange a refresh token for a new access/refresh token pair.
-     *
-     * @return array{token_type: string, expires_in: int, access_token: string, refresh_token: string}
-     */
-    public function refresh(string $refreshToken, ?string $scope = null): array
-    {
-        return $this->requestToken([
-            'grant_type' => 'refresh_token',
-            'refresh_token' => $refreshToken,
-            'scope' => $scope ?? '',
-        ]);
-    }
+    public function __construct(protected ResourceServer $resourceServer) {}
 
     /**
      * Validate an access token (signature, expiry and revocation) and
@@ -149,26 +113,5 @@ class OAuthTokenService
     public function revokeAllFor(User $user): void
     {
         $user->tokens()->where('revoked', false)->pluck('id')->each(fn (string $id) => $this->revoke($id));
-    }
-
-    /**
-     * @param  array<string, string>  $params
-     * @return array<string, mixed>
-     */
-    protected function requestToken(array $params): array
-    {
-        $request = (new ServerRequest('POST', '/api/auth/oauth/token'))->withParsedBody([
-            ...$params,
-            'client_id' => config('oauth.password_client.id'),
-            'client_secret' => config('oauth.password_client.secret'),
-        ]);
-
-        try {
-            $response = $this->authorizationServer->respondToAccessTokenRequest($request, new Psr7Response);
-        } catch (OAuthServerException $e) {
-            throw OAuthTokenException::fromServerException($e);
-        }
-
-        return json_decode((string) $response->getBody(), true);
     }
 }

@@ -4,7 +4,7 @@ meta {
 }
 
 docs {
-  Sesiones de usuarios finales con el password grant. El secreto del cliente password nunca sale del servidor: estos endpoints lo usan internamente.
+  Perfil y cierre de sesión con el access token de una persona. Las personas entran solo por el login central: primero ejecutar **Login central / Código con PKCE**, que guarda `accessToken`.
 
-  Orden sugerido: **Iniciar sesión** → **Perfil** → **Renovar tokens** → **Cerrar sesión**.
+  Orden sugerido: **Perfil** → **Cerrar sesión**.
 }

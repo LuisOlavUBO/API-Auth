@@ -5,13 +5,12 @@ info:
   description: |
     Microservicio OAuth2 que emite y valida los tokens JWT (RS256) del resto de las APIs.
 
-    **Usuarios finales:** login, refresh, perfil y logout con el password grant. No hay registro público: los
-    usuarios se crean al entrar por primera vez con Microsoft. El secreto del
-    cliente nunca sale del servidor: estos endpoints lo usan internamente.
-
-    **Login central (monolitos):** la contraseña solo se escribe en IAM. El satélite manda al navegador a
-    `GET /api/auth/oauth/authorize` (código con PKCE `S256`), IAM muestra su login y devuelve un `code` que el
-    satélite canjea en `POST /api/auth/oauth/token`. `GET /api/auth/logout` cierra la sesión central y revoca los
+    **Login central (monolitos):** las personas entran solo por la página de IAM; la contraseña nunca se envía a
+    la API (no hay `/v1/login` ni password grant). No hay registro público: los usuarios se crean al entrar por
+    primera vez con Microsoft. El satélite manda al navegador a `GET /api/auth/oauth/authorize` (código con PKCE
+    `S256`), IAM muestra su login y devuelve un `code` que el satélite canjea en `POST /api/auth/oauth/token`,
+    donde también renueva los tokens con `refresh_token`. Con el access token de la persona puede llamar a
+    `/v1/me`, `/v1/logout` y `/v1/logout-all`. `GET /api/auth/logout` cierra la sesión central y revoca los
     tokens. El login también ofrece "Ingresar con Microsoft" (Entra ID, solo el tenant de la UBO). Estas páginas
     responden HTML y redirecciones, no problem+json.
 
@@ -31,12 +30,9 @@ info:
 
     | `error` | Estado | Cuándo |
     |---|---|---|
-    | `invalid_grant` | 401 | Login o refresh con credenciales o refresh token inválidos |
-    | `invalid_scope`, `invalid_request` | 400 | Login o refresh con un scope o una solicitud OAuth inválidos |
     | `NO_AUTENTICADO` | 401 | Falta el token, o es inválido, vencido o revocado |
     | `SCOPE_INSUFICIENTE` | 403 | El token no tiene el scope que exige la ruta |
     | `VALIDACION` | 422 | Datos inválidos; los mensajes por campo van en `errores` |
-    | `LIMITE_EXCEDIDO` | 429 | Rate limit superado; `Retry-After` indica cuándo reintentar |
     | `RUTA_NO_ENCONTRADA` / `METODO_NO_PERMITIDO` | 404 / 405 | La ruta o el método no existen |
     | `ERROR_INTERNO` | 500 | Error inesperado; el detalle queda solo en el log |
 
@@ -54,7 +50,7 @@ servers:
 
 tags:
   - name: Usuarios
-    description: Sesiones de usuarios finales (password grant).
+    description: Perfil y cierre de sesión con el access token de una persona (obtenido en el login central).
   - name: Servicios
     description: Endpoints para otros microservicios.
   - name: Login central
@@ -63,64 +59,6 @@ tags:
     description: Estado del servicio.
 
 paths:
-  /api/auth/v1/login:
-    post:
-      tags: [Usuarios]
-      summary: Iniciar sesión
-      description: |
-        Cambia email y contraseña por un par de tokens. Sin `scope` se pide el scope por defecto
-        (`user:read`). Rate limit: 10 solicitudes por minuto por email + IP.
-      operationId: iniciarSesion
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/LoginSolicitud' }
-      responses:
-        '200':
-          description: Credenciales válidas.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ParTokens' }
-        '400': { $ref: '#/components/responses/ErrorOAuth' }
-        '401': { $ref: '#/components/responses/CredencialesInvalidas' }
-        '422': { $ref: '#/components/responses/Validacion' }
-        '429': { $ref: '#/components/responses/LimiteExcedido' }
-        '500': { $ref: '#/components/responses/ErrorInterno' }
-
-  /api/auth/v1/refresh:
-    post:
-      tags: [Usuarios]
-      summary: Renovar tokens
-      description: |
-        Cambia un refresh token por un par nuevo; el refresh anterior queda revocado. Se quitan los scopes
-        que el rol del usuario ya no tenga.
-      operationId: renovarTokens
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [refresh_token]
-              properties:
-                refresh_token: { type: string }
-                scope:
-                  type: [string, 'null']
-                  description: Scopes separados por espacio.
-      responses:
-        '200':
-          description: Par de tokens nuevo.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ParTokens' }
-        '401': { $ref: '#/components/responses/CredencialesInvalidas' }
-        '422': { $ref: '#/components/responses/Validacion' }
-        '429': { $ref: '#/components/responses/LimiteExcedido' }
-        '500': { $ref: '#/components/responses/ErrorInterno' }
-
   /api/auth/v1/me:
     get:
       tags: [Usuarios]
@@ -544,7 +482,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Access token de usuario obtenido con `/api/auth/v1/login`.
+      description: Access token de usuario obtenido canjeando un código del login central.
     tokenServicio:
       type: oauth2
       description: Token de cliente obtenido con `client_credentials`.
@@ -555,28 +493,6 @@ components:
             introspect: Validar tokens de otros servicios.
 
   schemas:
-    LoginSolicitud:
-      type: object
-      required: [email, password]
-      properties:
-        email: { type: string, format: email }
-        password: { type: string, format: password }
-        scope:
-          type: [string, 'null']
-          description: Scopes separados por espacio. Sin valor se pide `user:read`.
-          examples: [user:read user:write]
-
-    ParTokens:
-      type: object
-      required: [token_type, expires_in, access_token, refresh_token]
-      properties:
-        token_type: { type: string, const: Bearer }
-        expires_in:
-          type: integer
-          description: Segundos hasta que vence el access token.
-        access_token: { type: string }
-        refresh_token: { type: string }
-
     Usuario:
       type: object
       required: [id, uuid, rut, name, email, email_verified_at, created_at]
@@ -665,8 +581,7 @@ components:
         error:
           type: string
           description: |
-            Código estable para el programa que llama (ver la descripción de la API). Los fallos de login y
-            refresh conservan su código OAuth.
+            Código estable para el programa que llama (ver la descripción de la API).
 
     ProblemaValidacion:
       allOf:
@@ -692,28 +607,6 @@ components:
         hint: { type: string }
 
   responses:
-    ErrorOAuth:
-      description: Solicitud OAuth inválida (`invalid_scope`, `invalid_request`).
-      content:
-        application/problem+json:
-          schema: { $ref: '#/components/schemas/Problema' }
-          example:
-            type: about:blank
-            title: Scope inválido
-            status: 400
-            detail: Check the `introspect` scope
-            error: invalid_scope
-    CredencialesInvalidas:
-      description: Credenciales o refresh token inválidos (`invalid_grant`).
-      content:
-        application/problem+json:
-          schema: { $ref: '#/components/schemas/Problema' }
-          example:
-            type: about:blank
-            title: Credenciales inválidas
-            status: 401
-            detail: The user credentials were incorrect.
-            error: invalid_grant
     NoAutenticado:
       description: Falta el token o no es válido, está vencido o revocado (`NO_AUTENTICADO`).
       content:
@@ -748,18 +641,4 @@ components:
             detail: Los datos enviados no son válidos.
             error: VALIDACION
             errores:
-              email: [The email field is required.]
-    LimiteExcedido:
-      description: Se superó el rate limit de 10 por minuto por email + IP (`LIMITE_EXCEDIDO`).
-      headers:
-        Retry-After:
-          description: Segundos que hay que esperar antes de reintentar.
-          schema: { type: integer }
-      content:
-        application/problem+json:
-          schema: { $ref: '#/components/schemas/Problema' }
-    ErrorInterno:
-      description: Error inesperado (`ERROR_INTERNO`). Nunca incluye el detalle interno.
-      content:
-        application/problem+json:
-          schema: { $ref: '#/components/schemas/Problema' }
+              token: [The token field is required.]

@@ -42,13 +42,12 @@ class Application extends Model
      * Passport's ClientRepository cannot be used: it inserts without application_id,
      * which is required. The attributes are the same ones it sets.
      *
-     * @param  'client-credentials'|'password'|'authorization-code'  $type
+     * @param  'client-credentials'|'authorization-code'  $type
      * @param  string[]  $redirectUris  Where 'authorization-code' clients may receive the code
      */
     public function createClient(string $name, string $type = 'client-credentials', array $redirectUris = []): Client
     {
         $grantTypes = match ($type) {
-            'password' => ['password', 'refresh_token'],
             'authorization-code' => ['authorization_code', 'refresh_token'],
             default => ['client_credentials'],
         };

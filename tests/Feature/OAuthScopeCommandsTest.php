@@ -175,6 +175,7 @@ class OAuthScopeCommandsTest extends TestCase
         $this->artisan('oauth:client', ['name' => 'portal-backend'])->assertFailed();
         $this->artisan('oauth:client', ['name' => 'portal-backend', '--application' => 'ghost'])->assertFailed();
         $this->artisan('oauth:client', ['name' => 'portal-backend', '--application' => 'portal', '--type' => 'implicit'])->assertFailed();
+        $this->artisan('oauth:client', ['name' => 'portal-backend', '--application' => 'portal', '--type' => 'password'])->assertFailed();
 
         $this->assertSame(0, Passport::client()->newQuery()->where('name', 'portal-backend')->count());
     }

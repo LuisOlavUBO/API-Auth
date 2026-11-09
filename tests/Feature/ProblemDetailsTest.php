@@ -9,7 +9,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
-use Mockery;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -20,13 +19,6 @@ class ProblemDetailsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-
-        $client = $this->createClient('Test Password Client', 'password');
-
-        config([
-            'oauth.password_client.id' => $client->getKey(),
-            'oauth.password_client.secret' => $client->plainSecret,
-        ]);
 
         $this->seed(RoleScopeSeeder::class);
 
@@ -61,11 +53,7 @@ class ProblemDetailsTest extends TestCase
 
     public function test_tokens_without_the_required_scope_get_a_problem(): void
     {
-        $token = $this->postJson('/api/auth/v1/login', [
-            'email' => 'ana@example.com',
-            'password' => 'secret-password',
-            'scope' => 'user:write',
-        ])->json('access_token');
+        $token = $this->tokensFor(User::first(), $this->createCodeClient(), 'user:write')['access_token'];
 
         $this->assertProblem($this->withToken($token)->getJson('/api/auth/v1/me'), 403, 'SCOPE_INSUFICIENTE')
             ->assertJsonPath('detail', 'El token no tiene el scope requerido: user:read.');
@@ -73,55 +61,30 @@ class ProblemDetailsTest extends TestCase
 
     public function test_invalid_input_lists_the_errors_per_field(): void
     {
-        $this->assertProblem($this->postJson('/api/auth/v1/login', ['email' => 'not-an-email']), 422, 'VALIDACION')
-            ->assertJsonValidationErrors(['email', 'password'], 'errores');
+        $client = $this->createClient('Orders Service');
+        Role::firstWhere('name', 'introspector')->clients()->attach($client->getKey());
+        $serviceToken = $this->postJson('/api/auth/oauth/token', [
+            'grant_type' => 'client_credentials',
+            'client_id' => $client->getKey(),
+            'client_secret' => $client->plainSecret,
+            'scope' => 'introspect',
+        ])->assertOk()->json('access_token');
+
+        $this->assertProblem($this->withToken($serviceToken)->postJson('/api/auth/v1/introspect'), 422, 'VALIDACION')
+            ->assertJsonValidationErrors(['token'], 'errores');
     }
 
-    public function test_login_failures_keep_their_oauth_code(): void
+    public function test_a_reused_refresh_token_is_not_logged_as_an_error(): void
     {
-        $this->assertProblem($this->postJson('/api/auth/v1/login', [
-            'email' => 'ana@example.com',
-            'password' => 'wrong-password',
-        ]), 401, 'invalid_grant')->assertJsonPath('title', 'Credenciales inválidas');
-    }
+        $client = $this->createCodeClient();
+        $refreshToken = $this->tokensFor(User::first(), $client)['refresh_token'];
+        $this->refreshTokens($client, $refreshToken)->assertOk();
 
-    public function test_failed_logins_are_not_logged_as_errors(): void
-    {
         Log::spy();
 
-        $this->postJson('/api/auth/v1/login', ['email' => 'ana@example.com', 'password' => 'wrong-password'])
-            ->assertUnauthorized();
+        $this->refreshTokens($client, $refreshToken)->assertJsonPath('error', 'invalid_grant');
 
         Log::shouldNotHaveReceived('error');
-    }
-
-    public function test_a_rejected_password_client_answers_500_and_logs_the_reason(): void
-    {
-        config(['oauth.password_client.secret' => 'wrong-secret']);
-        Log::spy();
-
-        $this->assertProblem($this->postJson('/api/auth/v1/login', [
-            'email' => 'ana@example.com',
-            'password' => 'secret-password',
-        ]), 500, 'invalid_client')
-            ->assertJsonPath('detail', 'El servicio de autenticación no está bien configurado.')
-            ->assertDontSee('Client authentication failed');
-
-        Log::shouldHaveReceived('error')->once()
-            ->with(Mockery::on(fn (string $message) => str_starts_with($message, 'The password grant client was rejected: ')));
-    }
-
-    public function test_the_rate_limit_answers_a_problem_with_retry_after(): void
-    {
-        foreach (range(1, 10) as $attempt) {
-            $this->postJson('/api/auth/v1/login', ['email' => 'ana@example.com', 'password' => 'wrong-password']);
-        }
-
-        $this->assertProblem(
-            $this->postJson('/api/auth/v1/login', ['email' => 'ana@example.com', 'password' => 'wrong-password']),
-            429,
-            'LIMITE_EXCEDIDO',
-        )->assertHeader('Retry-After');
     }
 
     public function test_unknown_routes_get_a_problem(): void

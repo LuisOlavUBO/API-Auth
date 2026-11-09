@@ -10,7 +10,6 @@ use App\Models\User;
 use Database\Seeders\RoleScopeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /**
@@ -19,10 +18,6 @@ use Tests\TestCase;
 class CentralLoginTest extends TestCase
 {
     use RefreshDatabase;
-
-    protected const REDIRECT_URI = 'https://portal.ubo.cl/callback';
-
-    protected const VERIFIER = 'a-code-verifier-of-at-least-forty-three-characters-long';
 
     protected Client $client;
 
@@ -46,72 +41,7 @@ class CentralLoginTest extends TestCase
         $this->ana = User::factory()->withRoles($coordinador)->create(['email' => 'ana@example.com', 'password' => 'secret-password']);
         User::factory()->withRoles($lector)->create(['email' => 'beto@example.com', 'password' => 'secret-password']);
 
-        $this->client = $this->createClient('portal-web', 'authorization-code', 'portal', [self::REDIRECT_URI]);
-    }
-
-    protected function challenge(): string
-    {
-        return rtrim(strtr(base64_encode(hash('sha256', self::VERIFIER, true)), '+/', '-_'), '=');
-    }
-
-    /**
-     * @param  array<string, string|null>  $overrides
-     */
-    protected function authorizeUrl(array $overrides = []): string
-    {
-        return '/api/auth/oauth/authorize?'.http_build_query(array_filter([
-            'response_type' => 'code',
-            'client_id' => $this->client->getKey(),
-            'redirect_uri' => self::REDIRECT_URI,
-            'state' => 'xyz-state',
-            'code_challenge' => $this->challenge(),
-            'code_challenge_method' => 'S256',
-            ...$overrides,
-        ], fn ($value) => $value !== null));
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    protected function queryOf(TestResponse $response): array
-    {
-        parse_str((string) parse_url($response->headers->get('Location'), PHP_URL_QUERY), $query);
-
-        return $query;
-    }
-
-    /**
-     * Authorize as a person with a session and exchange the code for tokens.
-     *
-     * @return array<string, mixed>
-     */
-    protected function tokensFor(User $user): array
-    {
-        $response = $this->actingAs($user)->get($this->authorizeUrl());
-
-        return $this->exchange($this->queryOf($response)['code'])->assertOk()->json();
-    }
-
-    protected function exchange(string $code, string $verifier = self::VERIFIER): TestResponse
-    {
-        return $this->postJson('/api/auth/oauth/token', [
-            'grant_type' => 'authorization_code',
-            'client_id' => $this->client->getKey(),
-            'client_secret' => $this->client->plainSecret,
-            'redirect_uri' => self::REDIRECT_URI,
-            'code_verifier' => $verifier,
-            'code' => $code,
-        ]);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    protected function claimsOf(string $accessToken): array
-    {
-        $payload = explode('.', $accessToken)[1];
-
-        return json_decode(base64_decode(strtr($payload, '-_', '+/')), true);
+        $this->client = $this->createCodeClient('portal');
     }
 
     public function test_the_login_form_is_shown(): void
@@ -134,7 +64,7 @@ class CentralLoginTest extends TestCase
 
     public function test_a_guest_sent_to_the_login_returns_to_the_authorization_request(): void
     {
-        $this->get($this->authorizeUrl())->assertRedirect(route('login'));
+        $this->get($this->authorizeUrl($this->client))->assertRedirect(route('login'));
 
         $login = $this->post('/api/auth/login', ['email' => 'ana@example.com', 'password' => 'secret-password']);
 
@@ -200,7 +130,7 @@ class CentralLoginTest extends TestCase
 
     public function test_authorization_requires_a_pkce_challenge_before_asking_for_credentials(): void
     {
-        $this->get($this->authorizeUrl(['code_challenge' => null, 'code_challenge_method' => null]))
+        $this->get($this->authorizeUrl($this->client, ['code_challenge' => null, 'code_challenge_method' => null]))
             ->assertStatus(400)
             ->assertHeaderMissing('Location');
 
@@ -209,13 +139,13 @@ class CentralLoginTest extends TestCase
 
     public function test_authorization_rejects_the_plain_challenge_method(): void
     {
-        $this->get($this->authorizeUrl(['code_challenge_method' => 'plain']))->assertStatus(400);
-        $this->actingAs($this->ana)->get($this->authorizeUrl(['code_challenge_method' => 'plain']))->assertStatus(400);
+        $this->get($this->authorizeUrl($this->client, ['code_challenge_method' => 'plain']))->assertStatus(400);
+        $this->actingAs($this->ana)->get($this->authorizeUrl($this->client, ['code_challenge_method' => 'plain']))->assertStatus(400);
     }
 
     public function test_a_person_without_roles_in_the_client_application_gets_no_code(): void
     {
-        $this->actingAs(User::firstWhere('email', 'beto@example.com'))->get($this->authorizeUrl())
+        $this->actingAs(User::firstWhere('email', 'beto@example.com'))->get($this->authorizeUrl($this->client))
             ->assertForbidden()
             ->assertSee('No tienes acceso a este sistema, contacta a soporte')
             ->assertHeaderMissing('Location');
@@ -225,7 +155,7 @@ class CentralLoginTest extends TestCase
 
     public function test_a_person_with_roles_in_the_client_application_gets_a_code_without_a_consent_screen(): void
     {
-        $response = $this->actingAs($this->ana)->get($this->authorizeUrl());
+        $response = $this->actingAs($this->ana)->get($this->authorizeUrl($this->client));
 
         $response->assertRedirectContains(self::REDIRECT_URI.'?');
         $this->assertSame('xyz-state', $this->queryOf($response)['state']);
@@ -234,7 +164,7 @@ class CentralLoginTest extends TestCase
 
     public function test_a_redirect_uri_that_is_not_registered_is_not_followed(): void
     {
-        $response = $this->actingAs($this->ana)->get($this->authorizeUrl(['redirect_uri' => 'https://evil.example.com/callback']));
+        $response = $this->actingAs($this->ana)->get($this->authorizeUrl($this->client, ['redirect_uri' => 'https://evil.example.com/callback']));
 
         $response->assertStatus(401)->assertJsonPath('error', 'invalid_client');
         $this->assertDatabaseCount('oauth_auth_codes', 0);
@@ -242,20 +172,20 @@ class CentralLoginTest extends TestCase
 
     public function test_an_unknown_client_is_rejected(): void
     {
-        $this->actingAs($this->ana)->get($this->authorizeUrl(['client_id' => 'not-a-client']))->assertStatus(401);
-        $this->actingAs($this->ana)->get($this->authorizeUrl(['client_id' => fake()->uuid()]))->assertStatus(401);
+        $this->actingAs($this->ana)->get($this->authorizeUrl($this->client, ['client_id' => 'not-a-client']))->assertStatus(401);
+        $this->actingAs($this->ana)->get($this->authorizeUrl($this->client, ['client_id' => fake()->uuid()]))->assertStatus(401);
     }
 
     public function test_consent_is_not_supported(): void
     {
-        $this->actingAs($this->ana)->get($this->authorizeUrl(['prompt' => 'consent']))
+        $this->actingAs($this->ana)->get($this->authorizeUrl($this->client, ['prompt' => 'consent']))
             ->assertStatus(400)
             ->assertHeaderMissing('Location');
     }
 
     public function test_prompt_login_closes_the_session_and_asks_for_the_credentials_again(): void
     {
-        $this->actingAs($this->ana)->get($this->authorizeUrl(['prompt' => 'login']))
+        $this->actingAs($this->ana)->get($this->authorizeUrl($this->client, ['prompt' => 'login']))
             ->assertRedirect(route('login'));
 
         $this->assertGuest();
@@ -267,7 +197,7 @@ class CentralLoginTest extends TestCase
 
     public function test_prompt_login_checks_the_roles_of_whoever_logs_in(): void
     {
-        $this->actingAs($this->ana)->get($this->authorizeUrl(['prompt' => 'login']))->assertRedirect(route('login'));
+        $this->actingAs($this->ana)->get($this->authorizeUrl($this->client, ['prompt' => 'login']))->assertRedirect(route('login'));
 
         $login = $this->post('/api/auth/login', ['email' => 'beto@example.com', 'password' => 'secret-password']);
 
@@ -276,7 +206,7 @@ class CentralLoginTest extends TestCase
 
     public function test_the_code_is_exchanged_for_tokens_with_the_roles_and_scopes_of_the_application(): void
     {
-        $tokens = $this->tokensFor($this->ana);
+        $tokens = $this->tokensFor($this->ana, $this->client);
 
         $this->assertNotEmpty($tokens['refresh_token']);
 
@@ -289,24 +219,24 @@ class CentralLoginTest extends TestCase
 
     public function test_a_wrong_code_verifier_is_rejected(): void
     {
-        $code = $this->queryOf($this->actingAs($this->ana)->get($this->authorizeUrl()))['code'];
+        $code = $this->queryOf($this->actingAs($this->ana)->get($this->authorizeUrl($this->client)))['code'];
 
-        $this->exchange($code, 'another-verifier-of-at-least-forty-three-characters')
+        $this->exchange($this->client, $code, 'another-verifier-of-at-least-forty-three-characters')
             ->assertStatus(400)
             ->assertJsonPath('error', 'invalid_grant');
     }
 
     public function test_a_code_cannot_be_used_twice(): void
     {
-        $code = $this->queryOf($this->actingAs($this->ana)->get($this->authorizeUrl()))['code'];
+        $code = $this->queryOf($this->actingAs($this->ana)->get($this->authorizeUrl($this->client)))['code'];
 
-        $this->exchange($code)->assertOk();
-        $this->exchange($code)->assertStatus(400)->assertJsonPath('error', 'invalid_grant');
+        $this->exchange($this->client, $code)->assertOk();
+        $this->exchange($this->client, $code)->assertStatus(400)->assertJsonPath('error', 'invalid_grant');
     }
 
     public function test_logout_with_a_valid_return_closes_the_session_and_revokes_the_tokens(): void
     {
-        $tokens = $this->tokensFor($this->ana);
+        $tokens = $this->tokensFor($this->ana, $this->client);
 
         $this->get('/api/auth/logout?'.http_build_query([
             'client_id' => $this->client->getKey(),
@@ -326,7 +256,7 @@ class CentralLoginTest extends TestCase
 
     public function test_logout_does_not_return_to_an_origin_the_client_has_not_registered(): void
     {
-        $this->tokensFor($this->ana);
+        $this->tokensFor($this->ana, $this->client);
 
         $this->get('/api/auth/logout?'.http_build_query([
             'client_id' => $this->client->getKey(),
@@ -346,7 +276,7 @@ class CentralLoginTest extends TestCase
 
     public function test_logout_from_the_iam_page_closes_the_session_and_shows_the_login(): void
     {
-        $this->tokensFor($this->ana);
+        $this->tokensFor($this->ana, $this->client);
 
         $this->post('/api/auth/logout')->assertRedirect(route('login'));
 

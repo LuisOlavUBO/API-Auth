@@ -23,8 +23,6 @@ class MicrosoftLoginTest extends TestCase
 
     protected const TENANT = '11111111-2222-3333-4444-555555555555';
 
-    protected const REDIRECT_URI = 'https://portal.ubo.cl/callback';
-
     protected function setUp(): void
     {
         parent::setUp();

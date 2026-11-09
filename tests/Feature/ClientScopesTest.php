@@ -65,19 +65,16 @@ class ClientScopesTest extends TestCase
         return (array) $this->claimsOf($accessToken)['aud'];
     }
 
-    /**
-     * @return array<string, mixed>
-     */
-    protected function claimsOf(string $accessToken): array
-    {
-        $payload = explode('.', $accessToken)[1];
-
-        return json_decode(base64_decode(strtr($payload, '-_', '+/')), true);
-    }
-
     public function test_client_without_roles_cannot_request_scopes(): void
     {
         $this->requestToken('introspect')->assertBadRequest()->assertJsonPath('error', 'invalid_scope');
+    }
+
+    public function test_scopes_outside_the_catalog_are_rejected(): void
+    {
+        foreach (['does-not-exist', '*'] as $scope) {
+            $this->requestToken($scope)->assertBadRequest()->assertJsonPath('error', 'invalid_scope');
+        }
     }
 
     public function test_client_without_roles_gets_a_token_without_scopes(): void
