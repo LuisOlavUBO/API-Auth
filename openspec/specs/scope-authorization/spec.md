@@ -10,7 +10,7 @@ Define qué permisos (scopes) puede llevar cada token: los scopes existen en un 
 Solo SHALL existir los scopes registrados en el catálogo del servicio. Cada scope MUST pertenecer a exactamente una aplicación (la que lo exige en sus endpoints o funciones). Un scope que no está en el catálogo, incluido el comodín `*`, MUST tratarse como inexistente.
 
 #### Scenario: Se solicita un scope que no existe
-- **WHEN** un login solicita el scope `does-not-exist` o `*`
+- **WHEN** un cliente solicita un token con el scope `does-not-exist` o `*`
 - **THEN** el sistema responde 400 con `error` igual a `invalid_scope`
 
 ### Requirement: Scopes concedidos por roles
@@ -28,46 +28,35 @@ Un token de usuario SHALL poder llevar la unión de los scopes de los roles del 
 - **THEN** el token emitido contiene `geografia:leer` y `matricula:leer`
 
 #### Scenario: Usuario sin rol
-- **WHEN** un usuario que no tiene roles en la aplicación del cliente inicia sesión
+- **WHEN** un usuario que no tiene roles en la aplicación del cliente entra por el login central
+- **THEN** no recibe un código ni tokens
+
+#### Scenario: Roles sin scopes
+- **WHEN** un usuario cuyo rol en la aplicación del cliente no concede scopes obtiene un token
 - **THEN** recibe un access token sin scopes, que es rechazado con 403 en `GET /api/auth/v1/me`
 
 #### Scenario: Usuario con roles en dos aplicaciones
-- **WHEN** un usuario con el rol `user` de `api-auth` y el rol `vendedor` de `portal` inicia sesión con un cliente de `api-auth`
+- **WHEN** un usuario con el rol `user` de `api-auth` y el rol `vendedor` de `portal` obtiene un token con un cliente de `api-auth`
 - **THEN** el token contiene los scopes de `user` y ninguno de los de `vendedor`
 
 #### Scenario: Rol con scopes de varias aplicaciones
-- **WHEN** el rol `vendedor` de `portal` concede `portal:ventas.crear` y `geografia:leer`, y un usuario con ese rol inicia sesión con un cliente de `portal`
+- **WHEN** el rol `vendedor` de `portal` concede `portal:ventas.crear` y `geografia:leer`, y un usuario con ese rol obtiene un token con un cliente de `portal`
 - **THEN** el token contiene `portal:ventas.crear` y `geografia:leer`
 
-### Requirement: Scopes por defecto en el login
-Cuando un usuario inicia sesión en `POST /api/auth/v1/login` sin enviar `scope`, el sistema SHALL solicitar los scopes por defecto (`user:read`), y un scope por defecto que sus roles no conceden MUST descartarse sin rechazar el login. Cuando un usuario obtiene un token de usuario por el endpoint OAuth2 sin solicitar scopes, el token MUST llevar todos los scopes que conceden sus roles en la aplicación del cliente.
-
-#### Scenario: Login sin scope
-- **WHEN** un usuario con el rol `user` inicia sesión en `/api/auth/v1/login` sin enviar `scope`
-- **THEN** el token contiene exactamente `user:read`
-
-#### Scenario: Usuario con más scopes que el por defecto
-- **WHEN** un usuario con el rol `admin` inicia sesión en `/api/auth/v1/login` sin enviar `scope`
-- **THEN** el token contiene exactamente `user:read`
-
-#### Scenario: Token de usuario sin scope por el endpoint OAuth2
-- **WHEN** un usuario con el rol `vendedor` de `portal` pide un token de usuario a un cliente de `portal`, sin `scope`
-- **THEN** el token contiene todos los scopes que concede `vendedor`
-
 ### Requirement: Rechazo de scopes no concedidos al emitir
-En el login de usuarios y en la emisión de tokens para clientes, solicitar explícitamente un scope que los roles del usuario en la aplicación del cliente (o los roles del cliente) no conceden MUST rechazarse con 400 e `invalid_scope`. Los scopes solicitados y concedidos SHALL incluirse en el token.
+Al emitir tokens de usuario y tokens de cliente, solicitar explícitamente un scope que los roles del usuario en la aplicación del cliente (o los roles del cliente) no conceden MUST rechazarse con `invalid_scope`, sin emitir tokens. Los scopes solicitados y concedidos SHALL incluirse en el token.
 
 #### Scenario: Usuario solicita scopes de su rol
-- **WHEN** un usuario con el rol `user` solicita `user:read user:write`
+- **WHEN** un usuario con el rol `user` obtiene un token solicitando `user:read user:write`
 - **THEN** el token contiene `user:read` y `user:write`
 
 #### Scenario: Usuario solicita un scope ajeno a su rol
 - **WHEN** un usuario con el rol `user` solicita `introspect`
-- **THEN** el sistema responde 400 con `error` igual a `invalid_scope`
+- **THEN** no recibe tokens y el error es `invalid_scope`
 
 #### Scenario: Usuario solicita un scope de un rol de otra aplicación
 - **WHEN** un usuario con el rol `vendedor` de `portal` solicita `portal:ventas.crear` con un cliente de `api-auth`
-- **THEN** el sistema responde 400 con `error` igual a `invalid_scope`
+- **THEN** no recibe tokens y el error es `invalid_scope`
 
 ### Requirement: Descarte de scopes revocados al renovar
 Al renovar con refresh token, los scopes del nuevo token SHALL ser los del token anterior que los roles actuales del usuario en la aplicación del cliente aún conceden; la renovación MUST NOT agregar scopes. Los cambios de roles o de scopes de un rol MUST aplicarse en el siguiente login o refresh, no a tokens ya emitidos.
@@ -124,3 +113,10 @@ Todo access token de usuario SHALL llevar en la claim `uuid` el identificador p�
 #### Scenario: Token de cliente
 - **WHEN** se decodifica el payload de un token de client credentials
 - **THEN** el token no tiene la claim `uuid`
+
+### Requirement: Token de usuario sin scopes solicitados
+Cuando un usuario obtiene un token de usuario sin solicitar scopes, el token MUST llevar todos los scopes que conceden sus roles en la aplicación del cliente. No hay otros scopes por defecto.
+
+#### Scenario: Token de usuario sin scope
+- **WHEN** un usuario con el rol `vendedor` de `portal` obtiene un token con un cliente de `portal`, sin `scope`
+- **THEN** el token contiene todos los scopes que concede `vendedor`

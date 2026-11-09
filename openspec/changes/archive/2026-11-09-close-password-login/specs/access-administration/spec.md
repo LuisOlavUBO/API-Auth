@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Creación de clientes con su aplicación
-El comando `oauth:client {name} --application= --type= --redirect=*` SHALL crear un cliente OAuth de la aplicación indicada y mostrar su id y su secreto una sola vez. `--type` es `client-credentials` o `authorization-code`; este último es un cliente confidencial para el login central y exige al menos un `--redirect`, que MUST ser una URL absoluta. Cualquier otro tipo, incluido `password`, MUST rechazarse. `--application` es obligatorio y MUST ser una aplicación existente; si falla, no se crea el cliente.
+El comando `oauth:client {name} --application= --type= --redirect=*` SHALL crear un cliente OAuth de la aplicación indicada y mostrar su id y su secreto una sola vez. `--type` MUST ser `client-credentials` o `authorization-code`; este último es un cliente confidencial para el login central y exige al menos un `--redirect`, que MUST ser una URL absoluta. `--application` es obligatorio y MUST ser una aplicación existente; si falla, no se crea el cliente.
 
 #### Scenario: Crear un cliente de servicio
 - **WHEN** se ejecuta `oauth:client portal-backend --application=portal --type=client-credentials`
