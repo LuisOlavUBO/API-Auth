@@ -20,21 +20,11 @@ class TokenIntrospectionTest extends TestCase
     {
         parent::setUp();
 
-        $passwordClient = $this->createClient('Test Password Client', 'password');
-
-        config([
-            'oauth.password_client.id' => $passwordClient->getKey(),
-            'oauth.password_client.secret' => $passwordClient->plainSecret,
-        ]);
-
         $this->seed(RoleScopeSeeder::class);
 
-        User::factory()->withRoles(Role::firstWhere('name', 'user'))->create(['email' => 'ana@example.com', 'password' => 'secret-password', 'rut' => '12345678-5']);
+        $ana = User::factory()->withRoles(Role::firstWhere('name', 'user'))->create(['email' => 'ana@example.com', 'password' => 'secret-password', 'rut' => '12345678-5']);
 
-        $this->userToken = $this->postJson('/api/auth/v1/login', [
-            'email' => 'ana@example.com',
-            'password' => 'secret-password',
-        ])->json('access_token');
+        $this->userToken = $this->tokensFor($ana, $this->createCodeClient())['access_token'];
     }
 
     protected function serviceToken(string $scope = 'introspect'): string

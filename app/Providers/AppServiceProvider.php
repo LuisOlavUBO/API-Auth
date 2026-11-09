@@ -64,13 +64,12 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * Configure grants, scopes and token lifetimes for Passport. Passport has no default
-     * scopes: a request without "scope" reaches ScopeRepository as an empty list, and the
-     * default scopes of /v1/login (config oauth.default_scopes) are sent by OAuthTokenService.
+     * Configure grants, scopes and token lifetimes for Passport. The password grant stays off:
+     * people only get tokens through the central login. Passport has no default scopes: a
+     * request without "scope" reaches ScopeRepository as an empty list.
      */
     protected function configurePassport(): void
     {
-        Passport::enablePasswordGrant();
         Passport::useClientModel(Client::class);
 
         // Clients never ask for consent. This view only answers prompt=consent, which would

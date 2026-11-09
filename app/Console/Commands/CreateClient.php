@@ -7,7 +7,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Signature('oauth:client {name : Client name, e.g. portal-backend} {--application= : Application the client belongs to (required)} {--type=client-credentials : client-credentials, password or authorization-code} {--redirect=* : Redirect URL of an authorization-code client (repeatable)}')]
+#[Signature('oauth:client {name : Client name, e.g. portal-backend} {--application= : Application the client belongs to (required)} {--type=client-credentials : client-credentials or authorization-code} {--redirect=* : Redirect URL of an authorization-code client (repeatable)}')]
 #[Description('Create an OAuth client of an application (passport:client cannot: it does not know the application)')]
 class CreateClient extends Command
 {
@@ -26,8 +26,8 @@ class CreateClient extends Command
             return self::FAILURE;
         }
 
-        if (! in_array($this->option('type'), ['client-credentials', 'password', 'authorization-code'], true)) {
-            $this->error('The --type option must be client-credentials, password or authorization-code.');
+        if (! in_array($this->option('type'), ['client-credentials', 'authorization-code'], true)) {
+            $this->error('The --type option must be client-credentials or authorization-code.');
 
             return self::FAILURE;
         }

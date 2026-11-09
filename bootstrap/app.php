@@ -25,8 +25,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trustProxies(at: TrustedProxies::parse(env('TRUSTED_PROXIES')));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        // api/* answers errors in RFC 9457 with the stable code in "error" (OAuthTokenException included,
-        // with its OAuth code); /api/auth/oauth/token keeps OAuth2's format.
+        // api/* answers errors in RFC 9457 with the stable code in "error";
+        // /api/auth/oauth/token keeps OAuth2's format.
         // The web pages (login, logout, authorize) answer HTML and redirections instead.
         $problems = new ProblemRenderer;
         $exceptions->render(fn (Throwable $e, Request $request) => $request->is(...ApiPrefix::WEB_PAGES) ? null : $problems($e, $request));

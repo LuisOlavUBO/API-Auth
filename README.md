@@ -2,7 +2,7 @@
 
 Servicio OAuth2 que emite y valida tokens JWT para el resto de microservicios.
 
-- **Usuarios finales**: registro, login, refresh, perfil y logout (password grant, el secreto del cliente nunca sale del servidor).
+- **Usuarios finales**: entran solo por el [login central](#login-central-sso-de-los-satélites-monolito) (código con PKCE, con contraseña o con Microsoft); la contraseña nunca se envía a la API. Con su token, perfil y logout en `/api/auth/v1`.
 - **Otros microservicios**: se autentican con *client credentials* y validan tokens de usuario vía `/introspect`, o localmente con la clave pública.
 - **Rutas**: todas bajo `/api/auth` ([ApiPrefix.php](app/Http/ApiPrefix.php)): `/api/auth/v1/...` y `POST /api/auth/oauth/token`.
 - **Documentación**: Swagger UI en `/api/auth/docs/swagger` (`/` y `/docs/swagger` redirigen ahí). El contrato está en [`docs/openapi/openapi.yaml`](docs/openapi/openapi.yaml) y se sirve en `/api/auth/docs/openapi.yaml`; un test verifica que documente todas las rutas `/api`.
@@ -19,17 +19,7 @@ php artisan key:generate
 php artisan migrate
 php artisan db:seed --class=RoleScopeSeeder
 php artisan passport:keys
-php artisan oauth:client "Auth Service Password Client" --application=api-auth --type=password
 ```
-
-Copia el `Client ID` y `Client Secret` del último comando a `.env`:
-
-```
-PASSPORT_PASSWORD_CLIENT_ID=...
-PASSPORT_PASSWORD_CLIENT_SECRET=...
-```
-
-El secreto se guarda hasheado en la base de datos y solo se muestra una vez.
 
 ### Base de datos
 
@@ -41,7 +31,7 @@ Los tests corren contra SQL Server, en la base `apiauth_test` (ver [Tests](#test
 
 ### Caché y rate limiter
 
-`CACHE_STORE=database`: lo único que usa la caché es el rate limiter de `login`/`refresh`, que cuenta los intentos en la tabla `cache` de `apiauth`. No usa Redis a propósito: para este volumen la base alcanza, y un servicio más sería otro punto de falla para el login del que dependen todas las APIs. Las sesiones (`SESSION_DRIVER`) y la cola también están en la base de datos: la API no usa sesiones fuera de la página de Swagger.
+`CACHE_STORE=database`: lo único que usa la caché es el rate limiter del formulario de login y de `/api/auth/oauth/token`, que cuenta los intentos en la tabla `cache` de `apiauth`. No usa Redis a propósito: para este volumen la base alcanza, y un servicio más sería otro punto de falla para el login del que dependen todas las APIs. Las sesiones (`SESSION_DRIVER`) y la cola también están en la base de datos: la API no usa sesiones fuera de la página de Swagger.
 
 En producción (o contenedores) puedes pasar las claves por entorno en vez de archivos: `PASSPORT_PRIVATE_KEY` y `PASSPORT_PUBLIC_KEY`.
 
@@ -97,33 +87,37 @@ El compose fuerza `APP_ENV=production`, `APP_DEBUG=false` y `LOG_CHANNEL=stderr`
 
 **Proxy inverso:** `apidev.ubo.cl` es compartido por varias APIs. `ubo-nginx-proxy` elige el contenedor por el segmento que sigue a `/api` (`/api/auth/...` → `api-auth-nginx-prod`, por la red externa `proxy`) y pasa la ruta sin reescribirla, así que la URL interna y la externa son iguales: `http://192.168.51.220:4203/api/auth/v1/salud` y `https://apidev.ubo.cl/api/auth/v1/salud`. La imagen 3.0.0 cambió todas las URLs de la 2.x (`/api/v1/auth/*` → `/api/auth/v1/*`, `/oauth/token` → `/api/auth/oauth/token`) y no mantiene las antiguas: los consumidores necesitan una versión de UBO.Common con las rutas nuevas.
 
+**Sin password grant:** desde que se cerraron `/v1/login` y `/v1/refresh`, el cliente password de cada ambiente ya no sirve. Después de desplegar esa versión, revócalo y quita `PASSPORT_PASSWORD_CLIENT_ID` y `PASSPORT_PASSWORD_CLIENT_SECRET` de `.env.prod`:
+
+```sql
+UPDATE oauth_clients SET revoked = 1 WHERE id = '<PASSPORT_PASSWORD_CLIENT_ID>';
+```
+
 ## Endpoints (`/api/auth/v1`)
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| POST | `/login` | — | `email`, `password`, `scope?` → `access_token`, `refresh_token`, `expires_in` |
-| POST | `/refresh` | — | `refresh_token` → nuevo par (el refresh anterior queda revocado) |
 | GET | `/me` | Bearer (usuario, scope `user:read`) | Perfil del usuario del token |
 | POST | `/logout` | Bearer (usuario) | Revoca el access token actual y su refresh token |
 | POST | `/logout-all` | Bearer (usuario) | Revoca todas las sesiones del usuario |
 | POST | `/introspect` | Bearer (cliente, scope `introspect`) | `token` → `{ active, sub, client_id, scope, exp, user }` |
 | GET | `/public-key` | — | Clave pública PEM para verificar JWT localmente |
 
-Además `POST /api/auth/oauth/token` es el endpoint estándar OAuth2 de Passport, usado por los microservicios para el grant `client_credentials`. Junto con `GET /api/auth/oauth/authorize` del [login central](#login-central-sso-de-los-satélites-monolito) son las únicas rutas de Passport registradas: las demás (aprobar o rechazar, `/oauth/device`, `/oauth/token/refresh`) están apagadas con `Passport::ignoreRoutes()`. El login central agrega las páginas web `GET/POST /api/auth/login` y `GET/POST /api/auth/logout`, que responden HTML y no problem+json. `GET /api/auth/v1/salud` responde `{"estado": "OK", "base_datos": "OK"}` o `503` si la base no responde (misma forma que en API-Maestros). `/up` solo indica que Laravel arrancó.
+Además `POST /api/auth/oauth/token` es el endpoint estándar OAuth2 de Passport, usado por los microservicios para el grant `client_credentials` y por los satélites para canjear el código del login central y renovar sus tokens (`refresh_token`). No hay `/v1/login` ni `/v1/refresh`, y el password grant está apagado (`unsupported_grant_type`). Junto con `GET /api/auth/oauth/authorize` del [login central](#login-central-sso-de-los-satélites-monolito) son las únicas rutas de Passport registradas: las demás (aprobar o rechazar, `/oauth/device`, `/oauth/token/refresh`) están apagadas con `Passport::ignoreRoutes()`. El login central agrega las páginas web `GET/POST /api/auth/login` y `GET/POST /api/auth/logout`, que responden HTML y no problem+json. `GET /api/auth/v1/salud` responde `{"estado": "OK", "base_datos": "OK"}` o `503` si la base no responde (misma forma que en API-Maestros). `/up` solo indica que Laravel arrancó.
 
-Los endpoints públicos de `login`/`refresh` tienen rate limit de 10 req/min por email+IP.
+El formulario de login (`POST /api/auth/login`) tiene rate limit de 10 req/min por email+IP, y `/api/auth/oauth/token` de 120 req/min por cliente.
 
 ### Errores (RFC 9457)
 
-Las rutas `/api/auth/*` responden los errores como `application/problem+json`, igual que las demás APIs de la UBO. Los presenta el `ProblemRenderer` del módulo **Problems** de UBO.Common, registrado en [bootstrap/app.php](bootstrap/app.php). Los fallos de login y refresh son una `OAuthTokenException` ([OAuthTokenException.php](app/Exceptions/OAuthTokenException.php)), un error de negocio (`DomainProblem`) de esta API que el renderizador presenta con su código OAuth:
+Las rutas `/api/auth/*` responden los errores como `application/problem+json`, igual que las demás APIs de la UBO. Los presenta el `ProblemRenderer` del módulo **Problems** de UBO.Common, registrado en [bootstrap/app.php](bootstrap/app.php):
 
 ```json
 {
   "type": "about:blank",
-  "title": "Credenciales inválidas",
+  "title": "No autenticado",
   "status": 401,
-  "detail": "The user credentials were incorrect.",
-  "error": "invalid_grant"
+  "detail": "Se requiere un token de acceso válido, vigente y no revocado.",
+  "error": "NO_AUTENTICADO"
 }
 ```
 
@@ -131,8 +125,6 @@ Las rutas `/api/auth/*` responden los errores como `application/problem+json`, i
 
 | `error` | Estado | Cuándo |
 |---|---|---|
-| `invalid_grant` | 401 | Login o refresh con credenciales o refresh token inválidos |
-| `invalid_scope` / `invalid_request` | 400 | Login o refresh con un scope o una solicitud OAuth inválidos |
 | `NO_AUTENTICADO` | 401 | Falta el token, o es inválido, vencido o revocado |
 | `SCOPE_INSUFICIENTE` | 403 | El token no tiene el scope que exige la ruta |
 | `VALIDACION` | 422 | Datos inválidos; los mensajes por campo van en `errores` |
@@ -140,9 +132,9 @@ Las rutas `/api/auth/*` responden los errores como `application/problem+json`, i
 | `RUTA_NO_ENCONTRADA` / `METODO_NO_PERMITIDO` | 404 / 405 | La ruta o el método no existen |
 | `ERROR_INTERNO` | 500 | Error inesperado; el detalle queda solo en el log |
 
-Los fallos de login y refresh conservan su código OAuth en `error`, como antes. Si Passport rechaza el cliente password (`invalid_client`), es un error de configuración del servidor: responde `500` y el motivo queda solo en el log. Los demás fallos (contraseña incorrecta, refresh token vencido o revocado, scope inválido) son esperables y no se registran en el log. Lo que cambió para quien consume: el texto pasa de `message` a `detail`, y los errores de validación de `errors` a `errores`.
+Lo que cambió para quien consume: el texto pasa de `message` a `detail`, y los errores de validación de `errors` a `errores`.
 
-`POST /api/auth/oauth/token` mantiene el formato OAuth2 (`{error, error_description, hint}`), que esperan los clientes OAuth y `HttpServiceTokenProvider` de UBO.Common: Passport presenta sus propias excepciones antes que el `ProblemRenderer`. Solo los errores que no son de OAuth (ruta o método inexistente, rate limit) salen en RFC 9457. La introspección mantiene su `200` (`active` true/false) y sus estados de error: `IntrospectionValidator` de UBO.Common solo mira el estado (con `401` renueva su token y reintenta).
+`POST /api/auth/oauth/token` mantiene el formato OAuth2 (`{error, error_description, hint}`), que esperan los clientes OAuth y `HttpServiceTokenProvider` de UBO.Common: Passport presenta sus propias excepciones antes que el `ProblemRenderer`. Sus rechazos esperados (credenciales de cliente incorrectas, códigos o refresh tokens vencidos o reutilizados) no se registran como errores en el log. Solo los errores que no son de OAuth (ruta o método inexistente, rate limit) salen en RFC 9457. La introspección mantiene su `200` (`active` true/false) y sus estados de error: `IntrospectionValidator` de UBO.Common solo mira el estado (con `401` renueva su token y reintenta).
 
 ### Tracing (UBO.Common)
 
@@ -159,16 +151,12 @@ Ambos módulos quedan apagados aunque falten las variables. Para traer una versi
 ### Ejemplo
 
 ```bash
-curl -X POST http://localhost:8000/api/auth/v1/login -H "Accept: application/json" -d "email=ana@example.com&password=secret-password"
-```
-
-```bash
 curl http://localhost:8000/api/auth/v1/me -H "Accept: application/json" -H "Authorization: Bearer <access_token>"
 ```
 
 ### Colección Bruno
 
-[docs/bruno](docs/bruno) es una colección de [Bruno](https://www.usebruno.com/) con todos los endpoints, documentados y con tests. Se abre con *Open Collection* sobre esa carpeta; se elige el entorno `Local` o `Servidor` y se completan `email`, `password`, `client_id` y `client_secret` (las secretas quedan solo en el equipo); para la solicitud OAuth2 de **Login central**, también `callback_url`, `code_client_id` y `code_client_secret`. **Iniciar sesión** guarda `accessToken`/`refreshToken` y **Token de cliente (introspect)** guarda `clientToken` para las demás solicitudes.
+[docs/bruno](docs/bruno) es una colección de [Bruno](https://www.usebruno.com/) con todos los endpoints, documentados y con tests. Se abre con *Open Collection* sobre esa carpeta; se elige el entorno `Local` o `Servidor` y se completan `client_id` y `client_secret` (las secretas quedan solo en el equipo) y, para la solicitud OAuth2 de **Login central**, `callback_url`, `code_client_id` y `code_client_secret`. **Login central / Código con PKCE** guarda `accessToken` y **Token de cliente (introspect)** guarda `clientToken` para las demás solicitudes.
 
 ## Login central (SSO de los satélites monolito)
 
@@ -202,7 +190,7 @@ La contraseña solo se escribe en IAM. Un satélite monolito manda el navegador 
 
 4. Logout central: el satélite manda a `GET /api/auth/logout?client_id=<id>&return=https://portal.ubo.cl/` (el `return` debe tener el mismo origen que una redirección registrada del cliente). Cierra la sesión de IAM, revoca todos los tokens de la persona en todos los satélites y vuelve a `return`; si no coincide, muestra "Sesión cerrada". La página de IAM tiene su propio botón (`POST /api/auth/logout`).
 
-**Tiempos:** la sesión de IAM dura 120 minutos sin uso (`SESSION_LIFETIME`) y su cookie va acotada a `/api/auth`, `HttpOnly` y `SameSite=Lax`. El refresh token vence a los 120 minutos de inactividad (`PASSPORT_REFRESH_TOKEN_TTL`, se renueva con cada uso); esto también vale para los tokens de `/api/auth/v1/login`.
+**Tiempos:** la sesión de IAM dura 120 minutos sin uso (`SESSION_LIFETIME`) y su cookie va acotada a `/api/auth`, `HttpOnly` y `SameSite=Lax`. El refresh token vence a los 120 minutos de inactividad (`PASSPORT_REFRESH_TOKEN_TTL`, se renueva con cada uso).
 
 **Variables de despliegue** (en el `.env.prod`):
 
@@ -285,10 +273,10 @@ php artisan db:seed --class=RoleScopeSeeder
 
 Al emitir un token de usuario, [app/Services/ScopeRepository.php](app/Services/ScopeRepository.php) usa solo los roles del usuario que pertenecen a la aplicación del cliente que lo obtiene:
 
-- Sin `scope`, el token trae todos los scopes de esos roles. `POST /api/auth/v1/login` es la excepción: sin `scope` pide el scope por defecto (`user:read`).
+- Sin `scope`, el token trae todos los scopes de esos roles.
 - Pedir un scope que esos roles no conceden (o `*`, o uno inexistente) responde `400 invalid_scope`.
 - Un usuario sin roles en la aplicación obtiene un token sin scopes.
-- En `/refresh` se quitan los scopes que los roles ya no conceden y nunca se agregan; los scopes nuevos llegan en el siguiente login. La claim `roles` se recalcula.
+- Al renovar con `refresh_token` se quitan los scopes que los roles ya no conceden y nunca se agregan; los scopes nuevos llegan en el siguiente login. La claim `roles` se recalcula.
 - La claim `roles` lleva los nombres de esos roles y `aud` lleva el client id y, en orden alfabético, las aplicaciones dueñas de los scopes.
 
 Los tokens de cliente (`client_credentials`) usan la unión de los scopes de todos los roles del cliente y solo los que se piden. **Sin `scope` y sin `api`, el token no trae scopes.** Su claim `roles` lleva los roles del cliente que conceden alguno de los scopes del token.
@@ -414,14 +402,13 @@ php artisan test
 
 ## Estructura
 
-- [app/Services/OAuthTokenService.php](app/Services/OAuthTokenService.php) — emite/valida tokens usando el servidor OAuth2 de Passport en proceso.
-- [app/Http/Controllers/Auth/AuthController.php](app/Http/Controllers/Auth/AuthController.php) — registro, login, refresh, me, logout.
+- [app/Services/OAuthTokenService.php](app/Services/OAuthTokenService.php) — valida y revoca tokens usando el servidor OAuth2 de Passport en proceso.
+- [app/Http/Controllers/Auth/AuthController.php](app/Http/Controllers/Auth/AuthController.php) — me, logout y logout-all.
 - [app/Http/Controllers/Auth/TokenIntrospectionController.php](app/Http/Controllers/Auth/TokenIntrospectionController.php) — introspección y clave pública.
 - [app/Providers/AppServiceProvider.php](app/Providers/AppServiceProvider.php) — grants, TTL, rate limiting y binding del ScopeRepository.
 - [app/Services/ScopeRepository.php](app/Services/ScopeRepository.php) — catálogo de scopes en BD y filtrado por rol.
 - [app/Services/AccessToken.php](app/Services/AccessToken.php), [AccessTokenRepository.php](app/Services/AccessTokenRepository.php) y [TokenAudience.php](app/Services/TokenAudience.php) — el `aud` de los tokens por API: `ScopeRepository` valida `api` y lo deja en `TokenAudience`, y el repositorio crea el token con esa API.
 - [bootstrap/app.php](bootstrap/app.php) — errores RFC 9457 de `/api/*` con el `ProblemRenderer` de UBO.Common.
-- [app/Exceptions/OAuthTokenException.php](app/Exceptions/OAuthTokenException.php) — fallos de login y refresh: código OAuth, título y qué se registra en el log.
 - [config/ubo-common.php](config/ubo-common.php) — módulos de UBO.Common: Tracing, Problems, Health (`/api/auth/v1/salud`) y SqlServer.
 - [routes/api.php](routes/api.php) — rutas.
 - [routes/web.php](routes/web.php) — login, logout y autorización del [login central](#login-central-sso-de-los-satélites-monolito); [LoginController](app/Http/Controllers/Auth/LoginController.php), [LogoutController](app/Http/Controllers/Auth/LogoutController.php), [MicrosoftLoginController](app/Http/Controllers/Auth/MicrosoftLoginController.php) (Entra ID), los middleware [RequirePkce](app/Http/Middleware/RequirePkce.php) y [RequireRolesInClientApplication](app/Http/Middleware/RequireRolesInClientApplication.php) y las vistas en [resources/views/auth](resources/views/auth).

@@ -43,9 +43,8 @@ class ScopeRepository extends PassportScopeRepository
      * User tokens carry the scopes of the roles the user has in the application of the
      * client. Without requested scopes (Passport has no default scopes, so "none requested"
      * is an empty list, also when a code is exchanged) they carry all of them; asking for a
-     * scope outside the roles is rejected, except the default scopes of /v1/login, which are
-     * dropped so a login without "scope" still works. On refresh, scopes the roles no longer
-     * have are dropped instead of failing it, and none are added.
+     * scope outside the roles is rejected. On refresh, scopes the roles no longer have are
+     * dropped instead of failing it, and none are added.
      *
      * Client credentials tokens carry the scopes of the client's roles that were requested,
      * none when nothing is. A request with an "api" parameter gets a token for that
@@ -109,7 +108,7 @@ class ScopeRepository extends PassportScopeRepository
             $final = array_map(fn (string $name): ScopeEntityInterface => new Scope($name), $allowed);
         } else {
             if ($grantType !== 'refresh_token') {
-                $this->rejectScopesOutside($scopes, $allowed, config('oauth.default_scopes'));
+                $this->rejectScopesOutside($scopes, $allowed);
             }
 
             $final = $scopes
@@ -216,16 +215,15 @@ class ScopeRepository extends PassportScopeRepository
     /**
      * @param  Collection<int, ScopeEntityInterface>  $scopes
      * @param  string[]  $allowed
-     * @param  string[]  $exempt  Scopes that may be requested even when not allowed (they are dropped later).
      *
      * @throws OAuthServerException
      */
-    protected function rejectScopesOutside(Collection $scopes, array $allowed, array $exempt = []): void
+    protected function rejectScopesOutside(Collection $scopes, array $allowed): void
     {
         foreach ($scopes as $scope) {
             $name = $scope->getIdentifier();
 
-            if (! in_array($name, $allowed, true) && ! in_array($name, $exempt, true)) {
+            if (! in_array($name, $allowed, true)) {
                 throw OAuthServerException::invalidScope($name);
             }
         }

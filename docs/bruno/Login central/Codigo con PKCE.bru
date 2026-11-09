@@ -29,6 +29,14 @@ auth:oauth2 {
   auto_refresh_token: true
 }
 
+script:post-response {
+  // Las solicitudes de Usuarios e Introspección usan este token.
+  const authorization = req.getHeader("Authorization");
+  if (authorization) {
+    bru.setVar("accessToken", authorization.replace(/^Bearer /, ""));
+  }
+}
+
 tests {
   test("responde 200 con el usuario del token", function () {
     expect(res.status).to.equal(200);
@@ -48,6 +56,7 @@ docs {
   - Una `redirect_uri` no registrada en el cliente responde `401 invalid_client` y no redirige.
   - Una persona sin roles en la aplicación del cliente ve "No tienes acceso a este sistema, contacta a soporte" (403) y no recibe código.
   - Con `prompt=login` en la URL de autorización IAM cierra su sesión y vuelve a pedir la clave.
-  - El refresh token vence a los 120 minutos de inactividad.
+  - Guarda el access token en `accessToken`, que usan **Usuarios** e **Introspección**.
+  - Bruno renueva el token en `/api/auth/oauth/token` con `grant_type=refresh_token`; el refresh token vence a los 120 minutos de inactividad.
   - Logout central: abrir `{{baseUrl}}/api/auth/logout?client_id={{code_client_id}}&return={{callback_url}}` en el navegador cierra la sesión de IAM y revoca todos los tokens de la persona.
 }

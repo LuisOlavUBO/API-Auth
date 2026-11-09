@@ -11,10 +11,6 @@ use UBO\Common\Health\Http\Controllers\HealthController;
 // Every route here is under /api/auth (App\Http\ApiPrefix).
 
 Route::prefix('v1')->group(function () {
-    Route::middleware('throttle:auth')->group(function () {
-        Route::post('login', [AuthController::class, 'login']);
-        Route::post('refresh', [AuthController::class, 'refresh']);
-    });
 
     Route::middleware('auth:api')->group(function () {
         Route::get('me', [AuthController::class, 'me'])->middleware(CheckToken::using('user:read'));

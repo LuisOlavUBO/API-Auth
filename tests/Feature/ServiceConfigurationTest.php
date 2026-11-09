@@ -18,8 +18,6 @@ class ServiceConfigurationTest extends TestCase
     {
         parent::setUp();
 
-        $client = $this->createClient('Test Password Client', 'password');
-        config(['oauth.password_client.id' => $client->getKey(), 'oauth.password_client.secret' => $client->plainSecret]);
         $this->seed(RoleScopeSeeder::class);
         User::factory()->withRoles(Role::firstWhere('name', 'user'))->create([
             'email' => 'ana@example.com',
@@ -44,18 +42,18 @@ class ServiceConfigurationTest extends TestCase
 
         foreach (range(1, 10) as $attempt) {
             $this->withServerVariables($proxy)->withHeader('X-Forwarded-For', '10.0.0.5')
-                ->postJson('/api/auth/v1/login', $body);
+                ->post('/api/auth/login', $body);
         }
 
         return $this->withServerVariables($proxy)->withHeader('X-Forwarded-For', '10.0.0.6')
-            ->postJson('/api/auth/v1/login', $body)->status();
+            ->post('/api/auth/login', $body)->status();
     }
 
     public function test_a_trusted_proxy_lets_the_limits_see_the_forwarded_ip(): void
     {
         TrustProxies::at(['172.18.0.2']);
 
-        $this->assertSame(401, $this->loginAttemptsThroughProxy());
+        $this->assertSame(302, $this->loginAttemptsThroughProxy());
     }
 
     public function test_forwarded_headers_from_an_untrusted_source_are_ignored(): void
@@ -73,7 +71,7 @@ class ServiceConfigurationTest extends TestCase
     {
         $this->assertSame(120, config('oauth.refresh_token_ttl'));
 
-        $this->postJson('/api/auth/v1/login', ['email' => 'ana@example.com', 'password' => 'secret-password'])->assertOk();
+        $this->tokensFor(User::first(), $this->createCodeClient());
 
         $expiresAt = now()->parse(DB::table('oauth_refresh_tokens')->value('expires_at'));
         $this->assertTrue($expiresAt->between(now()->addMinutes(119), now()->addMinutes(121)));
