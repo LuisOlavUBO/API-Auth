@@ -149,6 +149,8 @@ class CentralLoginTest extends TestCase
         $this->actingAs(User::firstWhere('email', 'beto@example.com'))->get($this->authorizeUrl($this->client))
             ->assertForbidden()
             ->assertSee('No tienes acceso a este sistema, contacta a soporte')
+            ->assertSee('Cerrar sesión')
+            ->assertSee('action="'.route('logout').'"', false)
             ->assertHeaderMissing('Location');
 
         $this->assertDatabaseCount('oauth_auth_codes', 0);
