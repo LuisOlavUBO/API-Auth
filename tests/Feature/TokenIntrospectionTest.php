@@ -8,6 +8,9 @@ use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\RoleScopeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Once;
+use Laravel\Passport\Client;
+use Laravel\Passport\Passport;
 use Tests\TestCase;
 
 class TokenIntrospectionTest extends TestCase
@@ -39,6 +42,17 @@ class TokenIntrospectionTest extends TestCase
             'client_secret' => $client->plainSecret,
             'scope' => $scope,
         ])->assertOk()->json('access_token');
+    }
+
+    /**
+     * Revoke or reactivate a client, as API-IAM does.
+     */
+    protected function setRevoked(Client $client, bool $revoked): void
+    {
+        $client->forceFill(['revoked' => $revoked])->save();
+
+        // Passport's ClientRepository is a singleton that memoizes clients with once(); reset it like a new HTTP request would.
+        Once::flush();
     }
 
     public function test_service_can_introspect_an_active_user_token(): void
@@ -118,6 +132,46 @@ class TokenIntrospectionTest extends TestCase
             ->postJson('/api/auth/v1/introspect', ['token' => $this->userToken])
             ->assertOk()
             ->assertExactJson(['active' => false]);
+    }
+
+    public function test_the_service_tokens_of_a_revoked_client_are_inactive(): void
+    {
+        $client = $this->createClient('Sistema X');
+        Role::factory()->withScopes(['user:read'])->create()->clients()->attach($client->getKey());
+
+        $token = $this->postJson('/api/auth/oauth/token', [
+            'grant_type' => 'client_credentials',
+            'client_id' => $client->getKey(),
+            'client_secret' => $client->plainSecret,
+            'scope' => 'user:read',
+        ])->assertOk()->json('access_token');
+
+        $this->setRevoked($client, true);
+
+        $this->withToken($this->serviceToken())
+            ->postJson('/api/auth/v1/introspect', ['token' => $token])
+            ->assertOk()
+            ->assertExactJson(['active' => false]);
+    }
+
+    public function test_the_user_tokens_of_a_revoked_client_are_inactive_until_it_is_reactivated(): void
+    {
+        $serviceToken = $this->serviceToken();
+        $client = Passport::client()->newQuery()->firstWhere('name', 'portal-web');
+
+        $this->setRevoked($client, true);
+
+        $this->withToken($serviceToken)
+            ->postJson('/api/auth/v1/introspect', ['token' => $this->userToken])
+            ->assertOk()
+            ->assertExactJson(['active' => false]);
+
+        $this->setRevoked($client, false);
+
+        $this->withToken($serviceToken)
+            ->postJson('/api/auth/v1/introspect', ['token' => $this->userToken])
+            ->assertOk()
+            ->assertJsonPath('active', true);
     }
 
     public function test_introspection_requires_the_introspect_scope(): void
