@@ -29,6 +29,8 @@ class RequireRolesInClientApplication
             return response()->view('auth.message', [
                 'title' => 'Sin acceso',
                 'message' => 'No tienes acceso a este sistema, contacta a soporte.',
+                // The session stays open: without the button the person could not switch accounts.
+                'logout' => true,
             ], 403);
         }
 
