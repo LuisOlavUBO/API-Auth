@@ -9,11 +9,12 @@ use App\Services\OAuthTokenService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Laravel\Passport\ClientRepository;
 use Laravel\Passport\Passport;
 
 class TokenIntrospectionController extends Controller
 {
-    public function __construct(protected OAuthTokenService $tokens) {}
+    public function __construct(protected OAuthTokenService $tokens, protected ClientRepository $clients) {}
 
     /**
      * RFC 7662 style introspection for other microservices. The caller
@@ -34,6 +35,11 @@ class TokenIntrospectionController extends Controller
 
         // The token of a disabled user stops working at once for the APIs that introspect.
         if ($user?->isDisabled()) {
+            return response()->json(['active' => false]);
+        }
+
+        // The tokens of a revoked client stop working at once for the APIs that introspect.
+        if ($this->clients->findActive($claims['client_id']) === null) {
             return response()->json(['active' => false]);
         }
 
