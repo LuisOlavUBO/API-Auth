@@ -32,11 +32,12 @@ class ScopeRepository extends PassportScopeRepository
     }
 
     /**
-     * Only scopes registered in oauth_scopes exist ("*" is not one of them).
+     * Only scopes registered in oauth_scopes exist ("*" is not one of them), and those of a
+     * disabled application do not.
      */
     public function getScopeEntityByIdentifier(string $identifier): ?ScopeEntityInterface
     {
-        return OAuthScope::where('name', $identifier)->exists() ? new Scope($identifier) : null;
+        return OAuthScope::vigentes()->where('name', $identifier)->exists() ? new Scope($identifier) : null;
     }
 
     /**
@@ -211,7 +212,7 @@ class ScopeRepository extends PassportScopeRepository
 
         $names = array_map(fn (ScopeEntityInterface $scope): string => $scope->getIdentifier(), $scopes);
 
-        return Role::whereHas('clients', fn (Builder $clients) => $clients->whereKey($clientId))
+        return Role::vigentes()->whereHas('clients', fn (Builder $clients) => $clients->whereKey($clientId))
             ->whereHas('oauthScopes', fn (Builder $oauthScopes) => $oauthScopes->whereIn('name', $names))
             ->orderBy('name')
             ->pluck('name')
