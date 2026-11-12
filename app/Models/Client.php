@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Laravel\Passport\Client as PassportClient;
 use Laravel\Passport\Scope;
@@ -13,6 +14,15 @@ use Laravel\Passport\Scope;
  */
 class Client extends PassportClient
 {
+    /**
+     * Always in lowercase: SQL Server returns uniqueidentifier in uppercase, and Passport puts getKey() in
+     * the token's "aud" and "sub" and in the introspection (change client-id-en-minusculas, D1).
+     */
+    protected function id(): Attribute
+    {
+        return Attribute::get(fn (?string $value) => $value === null ? null : strtolower($value));
+    }
+
     /**
      * The application this client belongs to.
      */
