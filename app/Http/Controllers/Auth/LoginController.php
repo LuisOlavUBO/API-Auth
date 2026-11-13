@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Services\AuthenticationEvents;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -32,7 +33,7 @@ class LoginController extends Controller
     /**
      * Start the session and go back to what the person was trying to open.
      */
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, AuthenticationEvents $events): RedirectResponse
     {
         $credentials = $request->validate([
             'email' => ['required', 'email'],
@@ -44,20 +45,26 @@ class LoginController extends Controller
         ]);
 
         // A disabled user sees the same message as a wrong password: it does not reveal the account.
-        if (! Auth::validate($credentials) || Auth::getLastAttempted()->isDisabled()) {
+        $valid = Auth::validate($credentials);
+        $user = Auth::getLastAttempted();
+
+        if (! $valid || $user->isDisabled()) {
+            $events->loginFailed('clave', $valid ? 'baja' : 'credenciales', $user, $credentials['email']);
+
             return back()->withInput($request->only('email'))
                 ->withErrors(['email' => 'Correo o contraseña incorrectos.']);
         }
 
-        $user = Auth::getLastAttempted();
-
         if ($user->temporaryPasswordExpired()) {
+            $events->loginFailed('clave', 'clave_vencida', $user, $credentials['email']);
+
             return back()->withInput($request->only('email'))
                 ->withErrors(['email' => 'Tu contraseña temporal venció, contacta a soporte.']);
         }
 
         Auth::login($user);
         $request->session()->regenerate();
+        $events->loginSucceeded($user, 'clave');
 
         // The pending destination stays in the session: the password page goes on to it.
         if ($user->hasTemporaryPassword()) {

@@ -4,14 +4,18 @@ namespace App\Providers;
 
 use App\Models\Client;
 use App\Services\AccessTokenRepository;
+use App\Services\AuthenticationEvents;
+use App\Services\ClientRepository;
 use App\Services\ScopeRepository;
 use App\Services\TokenAudience;
 use Illuminate\Cache\RateLimiter;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Passport\Bridge\AccessTokenRepository as PassportAccessTokenRepository;
+use Laravel\Passport\Bridge\ClientRepository as PassportClientRepository;
 use Laravel\Passport\Bridge\ScopeRepository as PassportScopeRepository;
 use Laravel\Passport\Passport;
 use SocialiteProviders\Azure\AzureExtendSocialite;
@@ -32,6 +36,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(TokenAudience::class);
         $this->app->bind(PassportAccessTokenRepository::class, AccessTokenRepository::class);
 
+        // Records the clients that oauth/token rejects with invalid_client.
+        $this->app->bind(PassportClientRepository::class, ClientRepository::class);
+
         // Only the token and authorize endpoints are used: routes/api.php and routes/web.php register
         // them under the API prefix. The rest (approve, deny, device, token/refresh) is not published.
         Passport::ignoreRoutes();
@@ -51,7 +58,13 @@ class AppServiceProvider extends ServiceProvider
         // the cache store (and its connection) on every artisan command.
         $this->callAfterResolving(RateLimiter::class, function (RateLimiter $limiter) {
             $limiter->for('auth', function (Request $request) {
-                return Limit::perMinute(10)->by($request->input('email').'|'.$request->ip());
+                // The same 429 as without a callback, after recording the block.
+                return Limit::perMinute(10)->by($request->input('email').'|'.$request->ip())
+                    ->response(function (Request $request, array $headers) {
+                        app(AuthenticationEvents::class)->loginBlocked($request->string('email')->value() ?: null);
+
+                        throw new ThrottleRequestsException('Too Many Attempts.', null, $headers);
+                    });
             });
 
             // One satellite must not use up the token requests of the others behind the same IP.

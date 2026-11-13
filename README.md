@@ -29,6 +29,12 @@ El login del servidor tiene idioma español (formato de fecha `dmy`). Por eso el
 
 Los tests corren contra SQL Server, en la base `apiauth_test` (ver [Tests](#tests)).
 
+### Eventos de autenticación
+
+La tabla `authentication_events` es propia de API-Auth y guarda una fila por evento: `login_ok`, `login_fallido`, `login_bloqueado` (límite de intentos del login) y `cliente_rechazado` (`invalid_client` en `/api/auth/oauth/token`). Cada fila tiene la fecha (`occurred_at`), el método (`clave`, `microsoft`, `client_credentials`), el `user_id` si se sabe, el `client_id` (el que pidió el token o el de la autorización en curso), la IP, el navegador y el motivo del fallo (`credenciales`, `baja`, `clave_vencida`, `cuenta_vinculada_a_otra`, `cliente_inexistente`, `cliente_revocado`, `secreto_invalido`). El correo intentado se guarda, en minúsculas, solo en los fallos y bloqueos del login con clave. Nunca se guardan contraseñas, secretos ni tokens.
+
+Solo API-Auth escribe la tabla; API-IAM la lee para sus indicadores de seguridad. Si registrar un evento falla, el login sigue y el error queda en el log. Los eventos se borran a los 180 días (ver [Despliegue](#despliegue)).
+
 ### Caché y rate limiter
 
 `CACHE_STORE=database`: lo único que usa la caché es el rate limiter del formulario de login y de `/api/auth/oauth/token`, que cuenta los intentos en la tabla `cache` de `apiauth`. No usa Redis a propósito: para este volumen la base alcanza, y un servicio más sería otro punto de falla para el login del que dependen todas las APIs. Las sesiones (`SESSION_DRIVER`) y la cola también están en la base de datos: la API no usa sesiones fuera de la página de Swagger.
@@ -86,6 +92,14 @@ docker compose -f docker-compose.prod.yml up -d --no-build
 El compose fuerza `APP_ENV=production`, `APP_DEBUG=false` y `LOG_CHANNEL=stderr` (logs con `docker compose -f docker-compose.prod.yml logs app`). HTTPS se termina en el proxy inverso que esté delante del nginx.
 
 **Proxy inverso:** `apidev.ubo.cl` es compartido por varias APIs. `ubo-nginx-proxy` elige el contenedor por el segmento que sigue a `/api` (`/api/auth/...` → `api-auth-nginx-prod`, por la red externa `proxy`) y pasa la ruta sin reescribirla, así que la URL interna y la externa son iguales: `http://192.168.51.220:4203/api/auth/v1/salud` y `https://apidev.ubo.cl/api/auth/v1/salud`. La imagen 3.0.0 cambió todas las URLs de la 2.x (`/api/v1/auth/*` → `/api/auth/v1/*`, `/oauth/token` → `/api/auth/oauth/token`) y no mantiene las antiguas: los consumidores necesitan una versión de UBO.Common con las rutas nuevas.
+
+**Purga de eventos de autenticación:** los eventos de `authentication_events` (ver [Eventos de autenticación](#eventos-de-autenticación)) se guardan 180 días. `routes/console.php` programa `php artisan model:prune` una vez al día, pero el compose no corre el scheduler de Laravel. Por eso, en el servidor, agrega una tarea diaria al `crontab` del usuario que despliega:
+
+```bash
+0 3 * * * cd ~/projects/api-auth && docker compose -f docker-compose.prod.yml exec -T app php artisan model:prune
+```
+
+Si algún día el despliegue corre el scheduler (`php artisan schedule:run` cada minuto), esta tarea sobra.
 
 **Sin password grant:** desde que se cerraron `/v1/login` y `/v1/refresh`, el cliente password de cada ambiente ya no sirve. Después de desplegar esa versión, revócalo y quita `PASSPORT_PASSWORD_CLIENT_ID` y `PASSPORT_PASSWORD_CLIENT_SECRET` de `.env.prod`:
 
@@ -417,6 +431,7 @@ php artisan test
 - [app/Providers/AppServiceProvider.php](app/Providers/AppServiceProvider.php) — grants, TTL, rate limiting y binding del ScopeRepository.
 - [app/Services/ScopeRepository.php](app/Services/ScopeRepository.php) — catálogo de scopes en BD y filtrado por rol.
 - [app/Services/AccessToken.php](app/Services/AccessToken.php), [AccessTokenRepository.php](app/Services/AccessTokenRepository.php) y [TokenAudience.php](app/Services/TokenAudience.php) — el `aud` de los tokens por API: `ScopeRepository` valida `api` y lo deja en `TokenAudience`, y el repositorio crea el token con esa API.
+- [app/Services/AuthenticationEvents.php](app/Services/AuthenticationEvents.php) y [ClientRepository.php](app/Services/ClientRepository.php) — registro de [eventos de autenticación](#eventos-de-autenticación) en [AuthenticationEvent](app/Models/AuthenticationEvent.php); el repositorio registra los clientes que `/api/auth/oauth/token` rechaza.
 - [bootstrap/app.php](bootstrap/app.php) — errores RFC 9457 de `/api/*` con el `ProblemRenderer` de UBO.Common.
 - [config/ubo-common.php](config/ubo-common.php) — módulos de UBO.Common: Tracing, Problems, Health (`/api/auth/v1/salud`) y SqlServer.
 - [routes/api.php](routes/api.php) — rutas.
