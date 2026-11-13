@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\AuthenticationEvents;
 use Exception;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -38,7 +39,7 @@ class MicrosoftLoginController extends Controller
     /**
      * Start the session with the person's user and go back to what they were trying to open.
      */
-    public function callback(Request $request): RedirectResponse
+    public function callback(Request $request, AuthenticationEvents $events): RedirectResponse
     {
         abort_unless(self::isEnabled(), 404);
 
@@ -58,15 +59,20 @@ class MicrosoftLoginController extends Controller
         $user = User::fromMicrosoft($account->getId(), $email, $account->getName() ?: $email);
 
         if ($user === null) {
+            $events->loginFailed('microsoft', 'cuenta_vinculada_a_otra', User::where('email', $email)->first());
+
             return $this->failed('No pudimos asociar tu cuenta de Microsoft, contacta a soporte.');
         }
 
         if ($user->isDisabled()) {
+            $events->loginFailed('microsoft', 'baja', $user);
+
             return $this->failed('No tienes acceso, contacta a soporte.');
         }
 
         Auth::login($user);
         $request->session()->regenerate();
+        $events->loginSucceeded($user, 'microsoft');
 
         return redirect()->intended(route('login'));
     }
