@@ -36,6 +36,16 @@ class OAuthScope extends Model
     }
 
     /**
+     * Scopes in force: their application is not disabled.
+     *
+     * @param  Builder<self>  $query
+     */
+    public function scopeVigentes(Builder $query): void
+    {
+        $query->whereHas('application', fn (Builder $application) => $application->whereNull('disabled_at'));
+    }
+
+    /**
      * Application that requires this scope on its endpoints.
      */
     public function application(): BelongsTo
@@ -58,7 +68,9 @@ class OAuthScope extends Model
      */
     public static function grantedToClient(string $clientId): Builder
     {
-        return static::whereHas('roles.clients', fn (Builder $clients) => $clients->whereKey($clientId))
+        return static::vigentes()
+            ->whereHas('roles', fn (Builder $roles) => $roles->vigentes()
+                ->whereHas('clients', fn (Builder $clients) => $clients->whereKey($clientId)))
             ->orderBy('name');
     }
 

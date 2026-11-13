@@ -307,6 +307,40 @@ class CentralLoginTest extends TestCase
             ->assertJsonMissingPath('access_token');
     }
 
+    public function test_nobody_enters_a_disabled_application(): void
+    {
+        Application::firstWhere('name', 'portal')->forceFill(['disabled_at' => now()])->save();
+
+        $this->actingAs($this->ana)->get($this->authorizeUrl($this->client))
+            ->assertForbidden()
+            ->assertSee('No tienes acceso a este sistema, contacta a soporte')
+            ->assertHeaderMissing('Location');
+
+        $this->assertDatabaseCount('oauth_auth_codes', 0);
+    }
+
+    public function test_a_person_with_only_disabled_roles_in_the_client_application_gets_no_code(): void
+    {
+        Role::firstWhere('name', 'coordinador')->forceFill(['disabled_at' => now()])->save();
+
+        $this->actingAs($this->ana)->get($this->authorizeUrl($this->client))
+            ->assertForbidden()
+            ->assertSee('No tienes acceso a este sistema, contacta a soporte');
+
+        $this->assertDatabaseCount('oauth_auth_codes', 0);
+    }
+
+    public function test_a_client_of_a_disabled_application_cannot_refresh(): void
+    {
+        $tokens = $this->tokensFor($this->ana, $this->client);
+        Application::firstWhere('name', 'portal')->forceFill(['disabled_at' => now()])->save();
+
+        $this->refreshTokens($this->client, $tokens['refresh_token'])
+            ->assertUnauthorized()
+            ->assertJsonPath('error', 'invalid_client')
+            ->assertJsonMissingPath('access_token');
+    }
+
     public function test_a_disabled_user_gets_the_wrong_credentials_message(): void
     {
         $this->ana->forceFill(['disabled_at' => now()])->save();

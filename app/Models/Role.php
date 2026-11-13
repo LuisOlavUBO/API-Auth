@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Database\Factories\RoleFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,6 +20,17 @@ class Role extends Model
 {
     /** @use HasFactory<RoleFactory> */
     use HasFactory;
+
+    /**
+     * Roles in force: not disabled, and their application not disabled either.
+     *
+     * @param  Builder<self>  $query
+     */
+    public function scopeVigentes(Builder $query): void
+    {
+        $query->whereNull('roles.disabled_at')
+            ->whereHas('application', fn (Builder $application) => $application->whereNull('disabled_at'));
+    }
 
     /**
      * Application that defines this role.

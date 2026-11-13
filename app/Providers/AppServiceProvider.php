@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\Client;
 use App\Services\AccessTokenRepository;
 use App\Services\AuthenticationEvents;
+use App\Services\ClientEntityRepository;
 use App\Services\ClientRepository;
 use App\Services\ScopeRepository;
 use App\Services\TokenAudience;
@@ -15,8 +16,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Passport\Bridge\AccessTokenRepository as PassportAccessTokenRepository;
-use Laravel\Passport\Bridge\ClientRepository as PassportClientRepository;
+use Laravel\Passport\Bridge\ClientRepository as PassportClientEntityRepository;
 use Laravel\Passport\Bridge\ScopeRepository as PassportScopeRepository;
+use Laravel\Passport\ClientRepository as PassportClientRepository;
 use Laravel\Passport\Passport;
 use SocialiteProviders\Azure\AzureExtendSocialite;
 use SocialiteProviders\Manager\SocialiteWasCalled;
@@ -31,13 +33,16 @@ class AppServiceProvider extends ServiceProvider
         // Scopes live in the database and are filtered by the user's role.
         $this->app->bind(PassportScopeRepository::class, ScopeRepository::class);
 
+        // Clients of a disabled application are not active.
+        $this->app->singleton(PassportClientRepository::class, ClientRepository::class);
+
         // Tokens issued for one API name it in "aud": ScopeRepository validates
         // the API and AccessTokenRepository creates the token with it.
         $this->app->singleton(TokenAudience::class);
         $this->app->bind(PassportAccessTokenRepository::class, AccessTokenRepository::class);
 
         // Records the clients that oauth/token rejects with invalid_client.
-        $this->app->bind(PassportClientRepository::class, ClientRepository::class);
+        $this->app->bind(PassportClientEntityRepository::class, ClientEntityRepository::class);
 
         // Only the token and authorize endpoints are used: routes/api.php and routes/web.php register
         // them under the API prefix. The rest (approve, deny, device, token/refresh) is not published.

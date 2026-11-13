@@ -204,6 +204,19 @@ class AuthenticationEventsTest extends TestCase
         );
     }
 
+    public function test_a_client_of_a_disabled_application_is_recorded_as_revoked(): void
+    {
+        $client = $this->createClient('sistema', application: 'fuas');
+        Application::firstWhere('name', 'fuas')->forceFill(['disabled_at' => now()])->save();
+        Once::flush();
+
+        $this->clientToken($client, $client->plainSecret)->assertUnauthorized()->assertJsonPath('error', 'invalid_client');
+
+        $event = AuthenticationEvent::sole();
+        $this->assertSame($client->getKey(), $event->client_id);
+        $this->assertSame('cliente_revocado', $event->reason);
+    }
+
     public function test_a_client_that_gets_its_token_is_not_recorded(): void
     {
         $client = $this->createClient('sistema');

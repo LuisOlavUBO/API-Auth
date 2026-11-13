@@ -431,7 +431,7 @@ php artisan test
 - [app/Providers/AppServiceProvider.php](app/Providers/AppServiceProvider.php) — grants, TTL, rate limiting y binding del ScopeRepository.
 - [app/Services/ScopeRepository.php](app/Services/ScopeRepository.php) — catálogo de scopes en BD y filtrado por rol.
 - [app/Services/AccessToken.php](app/Services/AccessToken.php), [AccessTokenRepository.php](app/Services/AccessTokenRepository.php) y [TokenAudience.php](app/Services/TokenAudience.php) — el `aud` de los tokens por API: `ScopeRepository` valida `api` y lo deja en `TokenAudience`, y el repositorio crea el token con esa API.
-- [app/Services/AuthenticationEvents.php](app/Services/AuthenticationEvents.php) y [ClientRepository.php](app/Services/ClientRepository.php) — registro de [eventos de autenticación](#eventos-de-autenticación) en [AuthenticationEvent](app/Models/AuthenticationEvent.php); el repositorio registra los clientes que `/api/auth/oauth/token` rechaza.
+- [app/Services/AuthenticationEvents.php](app/Services/AuthenticationEvents.php) y [ClientEntityRepository.php](app/Services/ClientEntityRepository.php) — registro de [eventos de autenticación](#eventos-de-autenticación) en [AuthenticationEvent](app/Models/AuthenticationEvent.php); el repositorio registra los clientes que `/api/auth/oauth/token` rechaza.
 - [bootstrap/app.php](bootstrap/app.php) — errores RFC 9457 de `/api/*` con el `ProblemRenderer` de UBO.Common.
 - [config/ubo-common.php](config/ubo-common.php) — módulos de UBO.Common: Tracing, Problems, Health (`/api/auth/v1/salud`) y SqlServer.
 - [routes/api.php](routes/api.php) — rutas.

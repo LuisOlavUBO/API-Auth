@@ -2,49 +2,25 @@
 
 namespace App\Services;
 
-use Illuminate\Contracts\Hashing\Hasher;
-use Laravel\Passport\Bridge\ClientRepository as PassportClientRepository;
-use Laravel\Passport\ClientRepository as ClientModelRepository;
-use League\OAuth2\Server\Entities\ClientEntityInterface;
+use App\Models\Application;
+use Laravel\Passport\Client;
+use Laravel\Passport\ClientRepository as PassportClientRepository;
 
 /**
- * Passport's repository, recording the clients that oauth/token rejects with invalid_client
- * (change eventos-de-autenticacion, D3).
+ * A client of a disabled application is not active, like a revoked one: Passport uses
+ * findActive to issue and refresh tokens and in TokenGuard, and so does the introspection.
  */
 class ClientRepository extends PassportClientRepository
 {
-    public function __construct(ClientModelRepository $clients, Hasher $hasher, protected AuthenticationEvents $events)
+    public function findActive(string|int $id): ?Client
     {
-        parent::__construct($clients, $hasher);
-    }
+        $client = parent::findActive($id);
 
-    /**
-     * A missing or revoked client: invalid_client before its secret is checked.
-     */
-    public function getClientEntity(string $clientIdentifier): ?ClientEntityInterface
-    {
-        $client = parent::getClientEntity($clientIdentifier);
+        // Queried every time: find() keeps the client for the rest of the request.
+        $applicationIsActive = $client !== null && Application::whereKey($client->application_id)
+            ->whereNull('disabled_at')
+            ->exists();
 
-        // The authorization endpoint also looks clients up; only oauth/token is recorded.
-        if ($client === null && request()->routeIs('passport.token')) {
-            $reason = $this->clients->find($clientIdentifier) === null ? 'cliente_inexistente' : 'cliente_revocado';
-            $this->events->clientRejected($clientIdentifier, $reason);
-        }
-
-        return $client;
-    }
-
-    /**
-     * An active client with a wrong secret.
-     */
-    public function validateClient(string $clientIdentifier, ?string $clientSecret, ?string $grantType): bool
-    {
-        $valid = parent::validateClient($clientIdentifier, $clientSecret, $grantType);
-
-        if (! $valid) {
-            $this->events->clientRejected($clientIdentifier, 'secreto_invalido');
-        }
-
-        return $valid;
+        return $applicationIsActive ? $client : null;
     }
 }

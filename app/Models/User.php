@@ -58,7 +58,7 @@ class User extends Authenticatable implements OAuthenticatable
      */
     public function rolesIn(int $applicationId): Collection
     {
-        return $this->roles()->where('roles.application_id', $applicationId)->orderBy('roles.name')->get();
+        return $this->roles()->vigentes()->where('roles.application_id', $applicationId)->orderBy('roles.name')->get();
     }
 
     /**
@@ -68,7 +68,8 @@ class User extends Authenticatable implements OAuthenticatable
      */
     public function allowedScopeNames(int $applicationId): array
     {
-        return OAuthScope::whereHas('roles', fn (Builder $roles) => $roles
+        return OAuthScope::vigentes()->whereHas('roles', fn (Builder $roles) => $roles
+            ->vigentes()
             ->where('roles.application_id', $applicationId)
             ->whereHas('users', fn (Builder $users) => $users->whereKey($this->getKey())))
             ->orderBy('name')
