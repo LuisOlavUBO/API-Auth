@@ -6,32 +6,35 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    private const TABLES = ['applications', 'roles'];
+
     /**
-     * When the application or the role was disabled (reversible). Written by API-IAM, whose
-     * migration "aplicaciones-baja" adds them in the shared database.
+     * When the application or the role was disabled (reversible). API-IAM owns these tables and adds the
+     * columns in the shared database with its migration "aplicaciones-baja"; this copy exists for the test
+     * database, so each column is added only when missing and running it where API-IAM already did is harmless.
      */
     public function up(): void
     {
-        Schema::table('applications', function (Blueprint $table) {
-            $table->dateTime('disabled_at')->nullable();
-        });
-
-        Schema::table('roles', function (Blueprint $table) {
-            $table->dateTime('disabled_at')->nullable();
-        });
+        foreach (self::TABLES as $table) {
+            if (! Schema::hasColumn($table, 'disabled_at')) {
+                Schema::table($table, fn (Blueprint $blueprint) => $blueprint->dateTime('disabled_at')->nullable());
+            }
+        }
     }
 
     /**
-     * Reverse the migrations.
+     * Reverse the migrations. Only meaningful in testing: the columns belong to API-IAM.
      */
     public function down(): void
     {
-        Schema::table('applications', function (Blueprint $table) {
-            $table->dropColumn('disabled_at');
-        });
+        if (! app()->environment('testing')) {
+            return;
+        }
 
-        Schema::table('roles', function (Blueprint $table) {
-            $table->dropColumn('disabled_at');
-        });
+        foreach (self::TABLES as $table) {
+            if (Schema::hasColumn($table, 'disabled_at')) {
+                Schema::table($table, fn (Blueprint $blueprint) => $blueprint->dropColumn('disabled_at'));
+            }
+        }
     }
 };
