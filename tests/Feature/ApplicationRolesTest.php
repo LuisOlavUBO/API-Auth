@@ -208,6 +208,86 @@ class ApplicationRolesTest extends TestCase
         $this->assertArrayNotHasKey('uuid', $claims);
     }
 
+    public function test_a_disabled_role_grants_no_scopes_nor_role_until_it_is_reactivated(): void
+    {
+        $supervisor = Role::factory()->for($this->portal)->withScopes(['portal:ventas.anular'])->create(['name' => 'supervisor']);
+        $this->ana->roles()->attach($supervisor);
+
+        $this->vendedor->forceFill(['disabled_at' => now()])->save();
+        $claims = $this->claimsOf($this->userTokens($this->portalClient)['access_token']);
+
+        $this->assertSame(['portal:ventas.anular'], $claims['scopes']);
+        $this->assertSame(['supervisor'], $claims['roles']);
+
+        $this->vendedor->forceFill(['disabled_at' => null])->save();
+        $claims = $this->claimsOf($this->userTokens($this->portalClient)['access_token']);
+
+        $this->assertEqualsCanonicalizing(['portal:ventas.anular', 'portal:ventas.crear', 'geografia:leer'], $claims['scopes']);
+        $this->assertSame(['supervisor', 'vendedor'], $claims['roles']);
+    }
+
+    public function test_a_disabled_role_grants_no_scopes_to_a_client_until_it_is_reactivated(): void
+    {
+        $backend = $this->createClient('portal-backend', 'client-credentials', 'portal');
+        $lector = Role::factory()->for($this->maestros)->withScopes(['geografia:leer'])->create(['name' => 'lector']);
+        $lector->clients()->attach($backend->getKey());
+
+        $request = [
+            'grant_type' => 'client_credentials',
+            'client_id' => $backend->getKey(),
+            'client_secret' => $backend->plainSecret,
+            'scope' => 'geografia:leer',
+        ];
+
+        $lector->forceFill(['disabled_at' => now()])->save();
+
+        $this->postJson('/api/auth/oauth/token', $request)
+            ->assertJsonPath('error', 'invalid_scope')
+            ->assertJsonMissingPath('access_token');
+
+        $lector->forceFill(['disabled_at' => null])->save();
+        $claims = $this->claimsOf($this->postJson('/api/auth/oauth/token', $request)->assertOk()->json('access_token'));
+
+        $this->assertSame(['geografia:leer'], $claims['scopes']);
+        $this->assertSame(['lector'], $claims['roles']);
+    }
+
+    public function test_the_scopes_of_a_disabled_application_are_not_granted(): void
+    {
+        $this->maestros->forceFill(['disabled_at' => now()])->save();
+
+        $claims = $this->claimsOf($this->userTokens($this->portalClient)['access_token']);
+
+        $this->assertSame(['portal:ventas.crear'], $claims['scopes']);
+        $this->assertSame([strtolower($this->portalClient->getKey()), 'portal'], array_map('strtolower', (array) $claims['aud']));
+    }
+
+    public function test_the_roles_of_a_disabled_application_grant_no_scopes_to_a_client(): void
+    {
+        $backend = $this->createClient('maestros-backend', 'client-credentials', 'api-maestros');
+        $this->vendedor->clients()->attach($backend->getKey());
+        $this->portal->forceFill(['disabled_at' => now()])->save();
+
+        $this->postJson('/api/auth/oauth/token', [
+            'grant_type' => 'client_credentials',
+            'client_id' => $backend->getKey(),
+            'client_secret' => $backend->plainSecret,
+            'api' => 'api-maestros',
+        ])->assertJsonPath('error', 'invalid_scope')->assertJsonMissingPath('access_token');
+    }
+
+    public function test_a_client_of_a_disabled_application_gets_no_token(): void
+    {
+        $backend = $this->createClient('portal-backend', 'client-credentials', 'portal');
+        $this->portal->forceFill(['disabled_at' => now()])->save();
+
+        $this->postJson('/api/auth/oauth/token', [
+            'grant_type' => 'client_credentials',
+            'client_id' => $backend->getKey(),
+            'client_secret' => $backend->plainSecret,
+        ])->assertUnauthorized()->assertJsonPath('error', 'invalid_client')->assertJsonMissingPath('access_token');
+    }
+
     public function test_a_client_without_api_and_scope_gets_a_token_without_scopes(): void
     {
         $backend = $this->createClient('portal-backend', 'client-credentials', 'portal');

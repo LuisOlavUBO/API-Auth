@@ -174,6 +174,26 @@ class TokenIntrospectionTest extends TestCase
             ->assertJsonPath('active', true);
     }
 
+    public function test_the_tokens_of_a_client_of_a_disabled_application_are_inactive(): void
+    {
+        $client = $this->createClient('fuas-backend', 'client-credentials', 'fuas');
+        Role::factory()->withScopes(['user:read'])->create()->clients()->attach($client->getKey());
+
+        $token = $this->postJson('/api/auth/oauth/token', [
+            'grant_type' => 'client_credentials',
+            'client_id' => $client->getKey(),
+            'client_secret' => $client->plainSecret,
+            'scope' => 'user:read',
+        ])->assertOk()->json('access_token');
+
+        Application::firstWhere('name', 'fuas')->forceFill(['disabled_at' => now()])->save();
+
+        $this->withToken($this->serviceToken())
+            ->postJson('/api/auth/v1/introspect', ['token' => $token])
+            ->assertOk()
+            ->assertExactJson(['active' => false]);
+    }
+
     public function test_introspection_requires_the_introspect_scope(): void
     {
         $this->withToken($this->serviceToken('user:read'))
