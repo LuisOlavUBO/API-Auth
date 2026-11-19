@@ -142,19 +142,16 @@ class MicrosoftLoginTest extends TestCase
         $this->assertDatabaseCount('users', 1);
     }
 
-    public function test_a_new_person_gets_a_user_without_password_nor_roles(): void
+    public function test_a_person_without_a_user_cannot_log_in_and_no_user_is_created(): void
     {
-        $oid = (string) Str::uuid();
-        $this->fakeAccount($oid, 'nuevo@ubo.cl', name: 'Nuevo Funcionario');
+        $this->fakeAccount((string) Str::uuid(), 'nuevo@ubo.cl');
 
-        $this->get('/api/auth/login/microsoft/callback');
+        $this->get('/api/auth/login/microsoft/callback')
+            ->assertRedirect(route('login'))
+            ->assertSessionHasErrors(['microsoft' => 'No pudimos asociar tu cuenta de Microsoft, contacta a soporte.']);
 
-        $user = User::firstWhere('email', 'nuevo@ubo.cl');
-        $this->assertAuthenticatedAs($user);
-        $this->assertSame('Nuevo Funcionario', $user->name);
-        $this->assertNull($user->password);
-        $this->assertSame(0, $user->roles()->count());
-        $this->assertSame(1, User::where('entra_oid', $oid)->count());
+        $this->assertGuest();
+        $this->assertDatabaseCount('users', 0);
     }
 
     public function test_two_users_cannot_share_an_oid_but_many_can_have_none(): void
@@ -202,9 +199,10 @@ class MicrosoftLoginTest extends TestCase
             ->assertRedirectContains('state=xyz-state');
     }
 
-    public function test_a_new_person_from_microsoft_has_no_access_to_the_satellite_yet(): void
+    public function test_a_person_without_roles_in_the_satellite_has_no_access_to_it(): void
     {
         Application::factory()->create(['name' => 'portal']);
+        User::factory()->create(['email' => 'nuevo@ubo.cl', 'password' => null]);
         $this->fakeAccount((string) Str::uuid(), 'nuevo@ubo.cl');
 
         $this->authorizeWithMicrosoft()

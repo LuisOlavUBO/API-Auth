@@ -79,10 +79,10 @@ class User extends Authenticatable implements OAuthenticatable
 
     /**
      * The user of a Microsoft Entra ID account: the one with its object id, else the one with
-     * its email, which gets linked (and keeps its password), else a new user without password
-     * and without roles. Null when the email belongs to a user linked to another account.
+     * its email, which gets linked (and keeps its password). Users are created in API-IAM, never
+     * here: null when no user has that email or it belongs to a user linked to another account.
      */
-    public static function fromMicrosoft(string $oid, string $email, string $name): ?self
+    public static function fromMicrosoft(string $oid, string $email): ?self
     {
         $linked = static::where('entra_oid', $oid)->first();
 
@@ -92,11 +92,7 @@ class User extends Authenticatable implements OAuthenticatable
 
         $sameEmail = static::where('email', $email)->first();
 
-        if ($sameEmail === null) {
-            return static::create(['name' => $name, 'email' => $email, 'entra_oid' => $oid]);
-        }
-
-        if ($sameEmail->entra_oid !== null) {
+        if ($sameEmail === null || $sameEmail->entra_oid !== null) {
             return null;
         }
 
