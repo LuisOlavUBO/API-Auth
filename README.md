@@ -31,7 +31,7 @@ Los tests corren contra SQL Server, en la base `apiauth_test` (ver [Tests](#test
 
 ### Eventos de autenticación
 
-La tabla `authentication_events` es propia de API-Auth y guarda una fila por evento: `login_ok`, `login_fallido`, `login_bloqueado` (límite de intentos del login) y `cliente_rechazado` (`invalid_client` en `/api/auth/oauth/token`). Cada fila tiene la fecha (`occurred_at`), el método (`clave`, `microsoft`, `client_credentials`), el `user_id` si se sabe, el `client_id` (el que pidió el token o el de la autorización en curso), la IP, el navegador y el motivo del fallo (`credenciales`, `baja`, `clave_vencida`, `cuenta_vinculada_a_otra`, `cliente_inexistente`, `cliente_revocado`, `secreto_invalido`). El correo intentado se guarda, en minúsculas, solo en los fallos y bloqueos del login con clave. Nunca se guardan contraseñas, secretos ni tokens.
+La tabla `authentication_events` es propia de API-Auth y guarda una fila por evento: `login_ok`, `login_fallido`, `login_bloqueado` (límite de intentos del login) y `cliente_rechazado` (`invalid_client` en `/api/auth/oauth/token`). Cada fila tiene la fecha (`occurred_at`), el método (`clave`, `microsoft`, `client_credentials`), el `user_id` si se sabe, el `client_id` (el que pidió el token o el de la autorización en curso), la IP, el navegador y el motivo del fallo (`credenciales`, `baja`, `clave_vencida`, `sin_cuenta`, `cuenta_vinculada_a_otra`, `cliente_inexistente`, `cliente_revocado`, `secreto_invalido`). El correo intentado se guarda, en minúsculas, solo en los fallos y bloqueos del login con clave. Nunca se guardan contraseñas, secretos ni tokens.
 
 Solo API-Auth escribe la tabla; API-IAM la lee para sus indicadores de seguridad. Si registrar un evento falla, el login sigue y el error queda en el log. Los eventos se borran a los 180 días (ver [Despliegue](#despliegue)).
 
@@ -88,6 +88,14 @@ chmod 600 .env .env.prod storage/oauth-*.key
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d --no-build
 ```
+
+**Primera instalación de un ambiente:** API-Auth y API-IAM comparten la base y se instalan juntos, en este orden. Sin API-IAM no hay forma de crear usuarios ni clientes.
+
+1. Levantar API-Auth con `RUN_MIGRATIONS=true` (o correr `php artisan migrate --force` en el contenedor): crea todas las tablas, incluidas las del catálogo. Esperar a que quede `healthy`.
+2. Levantar API-IAM, que corre sus migraciones sin tocar las tablas ya creadas, y ejecutar `php artisan iam:install` a mano. Crea el catálogo base de `api-auth`, la aplicación `iam-admin`, los clientes de API-IAM y el primer administrador.
+3. Desde ahí, las personas, aplicaciones y clientes se administran en el portal de API-IAM.
+
+No levantar API-IAM antes que API-Auth en una base vacía: crearía las tablas del catálogo y las migraciones de API-Auth fallarían.
 
 El compose fuerza `APP_ENV=production`, `APP_DEBUG=false` y `LOG_CHANNEL=stderr` (logs con `docker compose -f docker-compose.prod.yml logs app`). HTTPS se termina en el proxy inverso que esté delante del nginx.
 
@@ -177,15 +185,7 @@ curl http://localhost:8000/api/auth/v1/me -H "Accept: application/json" -H "Auth
 
 La contraseña solo se escribe en IAM. Un satélite monolito manda el navegador de la persona a `GET /api/auth/oauth/authorize` (Authorization Code con PKCE `S256`, sin pantalla de consentimiento); IAM muestra su login en `/api/auth/login` (Blade, dentro de este servicio), guarda la sesión y devuelve un `code` a la `redirect_uri` del satélite, que lo canjea en `POST /api/auth/oauth/token` con su `code_verifier` y las credenciales de su cliente. El token trae los roles y scopes que la persona tiene en la aplicación del cliente. Las SPA, CORS y los clientes públicos quedan para otra entrega.
 
-1. Crear el cliente de código de autorización del satélite (confidencial, con al menos una `--redirect` absoluta; se repite para varias). La aplicación y los roles de la persona se crean como se explica en [Scopes y roles](#scopes-y-roles):
-
-   ```bash
-   php artisan oauth:application portal "Portal de la UBO"
-   ```
-
-   ```bash
-   php artisan oauth:client portal-web --application=portal --type=authorization-code --redirect=https://portal.ubo.cl/callback
-   ```
+1. En el portal de API-IAM, crear la aplicación del satélite (por ejemplo `portal`) y su cliente de código de autorización, confidencial y con al menos una redirección absoluta (por ejemplo `https://portal.ubo.cl/callback`). Las personas y sus roles también se administran ahí (ver [Scopes y roles](#scopes-y-roles)).
 
 2. El satélite genera un `code_verifier` y un `state`, y manda a la persona a:
 
@@ -210,7 +210,7 @@ La contraseña solo se escribe en IAM. Un satélite monolito manda el navegador 
 
 - Un usuario dado de baja no entra al login web (ve el mismo mensaje que con una clave incorrecta) ni con Microsoft ("No tienes acceso, contacta a soporte"), no canjea códigos ni renueva tokens (`invalid_grant`), y `/introspect` reporta sus tokens como inactivos. Las APIs que validan solo la firma aceptan su access token hasta que vence (60 minutos).
 - Una contraseña temporal vencida no sirve: "Tu contraseña temporal venció, contacta a soporte".
-- Al dar de baja o cambiar accesos, API-IAM llama a `POST /api/auth/v1/users/{uuid}/revoke` con un cliente que tenga el rol `api-auth/session-revoker` (scope `sessions:revoke`). En un ambiente existente, el scope y el rol se crean con `php artisan db:seed --class=RoleScopeSeeder`, que solo agrega lo que falta.
+- Al dar de baja o cambiar accesos, API-IAM llama a `POST /api/auth/v1/users/{uuid}/revoke` con un cliente que tenga el rol `api-auth/session-revoker` (scope `sessions:revoke`). El scope, el rol y ese cliente los crea `iam:install` de API-IAM.
 
 **Tiempos:** la sesión de IAM dura 120 minutos sin uso (`SESSION_LIFETIME`) y su cookie va acotada a `/api/auth`, `HttpOnly` y `SameSite=Lax`. El refresh token vence a los 120 minutos de inactividad (`PASSPORT_REFRESH_TOKEN_TTL`, se renueva con cada uso).
 
@@ -239,25 +239,13 @@ Cómo se identifica a la persona:
 - Por su `oid` (identificador de objeto de Entra ID), guardado en `users.entra_oid`. Si cambia su email en Microsoft, sigue siendo el mismo usuario.
 - La primera vez, si ya existe un usuario con su email (`mail` de Microsoft o, si no tiene, su `userPrincipalName`), se vincula a ese usuario, que **conserva su contraseña**.
 - Si ese email ya está vinculado a otra cuenta de Microsoft, ve "No pudimos asociar tu cuenta de Microsoft, contacta a soporte" y no inicia sesión.
-- Si no existe, se crea un usuario sin contraseña y **sin roles**: los satélites le muestran "No tienes acceso a este sistema, contacta a soporte" hasta que se le asignen. Un usuario sin contraseña no puede entrar con email y clave.
+- API-Auth no crea usuarios: si no hay un usuario con su `oid` ni con su email, ve "No pudimos asociar tu cuenta de Microsoft, contacta a soporte" y no inicia sesión. La persona se da de alta antes en API-IAM (con acceso `microsoft` queda sin contraseña y no puede entrar con email y clave).
 
 El logout central cierra la sesión de IAM pero no la de Microsoft: si la persona vuelve a elegir "Ingresar con Microsoft" en el mismo navegador, entra sin escribir su clave. Lo mismo pasa con `prompt=login`.
 
 ## Integrar otro microservicio
 
-1. Registrar la aplicación del servicio, crear su cliente y darle roles (sin roles no puede pedir ningún scope). Todo cliente pertenece a una aplicación, por eso se crea con `oauth:client` y no con `passport:client`:
-
-   ```bash
-   php artisan oauth:application orders-service "Servicio de órdenes"
-   ```
-
-   ```bash
-   php artisan oauth:client orders-service --application=orders-service --type=client-credentials
-   ```
-
-   ```bash
-   php artisan oauth:client-role orders-service api-auth/introspector
-   ```
+1. En el portal de API-IAM, registrar la aplicación del servicio (por ejemplo `orders-service`), crear su cliente `client-credentials` y darle roles, por ejemplo `api-auth/introspector`. Sin roles no puede pedir ningún scope. Todo cliente pertenece a una aplicación, por eso no se crea con `passport:client`.
 
 2. El servicio obtiene su token:
 
@@ -283,15 +271,11 @@ Una **aplicación** es un satélite, una API o un monolito. Los scopes, los role
 
 - `applications`: las aplicaciones (`api-auth`, `api-maestros`, `portal`, ...). Cada una usa solo lo que necesita: scopes si valida accesos, roles si tiene usuarios o los ofrece a quien la consume, clientes si pide tokens.
 - `oauth_scopes`: catálogo de scopes que existen (`user:read`, `geografia:leer`, ...). Cada scope pertenece a una aplicación (`application_id`, obligatorio). El nombre sigue la convención `dominio:permiso` y es único en toda la organización.
-- `roles` + `oauth_scope_role`: qué scopes concede cada rol, de cualquier aplicación. Un rol pertenece a una aplicación y su nombre es único dentro de ella; en los comandos se escribe `<aplicación>/<rol>`.
-- `role_user`: roles de cada usuario (varios, en una o varias aplicaciones). No hay registro público: los usuarios se crean sin roles al entrar por primera vez con Microsoft y los roles se asignan con `oauth:assign-role`.
+- `roles` + `oauth_scope_role`: qué scopes concede cada rol, de cualquier aplicación. Un rol pertenece a una aplicación y su nombre es único dentro de ella; se escribe `<aplicación>/<rol>`.
+- `role_user`: roles de cada usuario (varios, en una o varias aplicaciones). No hay registro público: los usuarios y sus roles se administran en API-IAM.
 - `oauth_clients.application_id`: la aplicación de cada cliente (obligatorio). Un cliente de `client_credentials` puede tener roles de cualquier aplicación (`oauth_client_role`), normalmente los que ofrece cada API que consume.
 
-Carga inicial (aplicación `api-auth`; roles `user`, `admin`, `introspector` y `session-revoker`; scopes `user:read`, `user:write`, `introspect` y `sessions:revoke`):
-
-```bash
-php artisan db:seed --class=RoleScopeSeeder
-```
+API-Auth solo lee estas tablas: las aplicaciones, scopes, roles, clientes y asignaciones se administran en el portal de API-IAM, que guarda la auditoría. El catálogo base (aplicación `api-auth`; roles `user`, `admin`, `introspector` y `session-revoker`; scopes `user:read`, `user:write`, `introspect` y `sessions:revoke`) lo crea `iam:install` de API-IAM. En desarrollo y en los tests se siembra con `php artisan db:seed --class=RoleScopeSeeder`.
 
 Al emitir un token de usuario, [app/Services/ScopeRepository.php](app/Services/ScopeRepository.php) usa solo los roles del usuario que pertenecen a la aplicación del cliente que lo obtiene:
 
@@ -316,55 +300,11 @@ El token nombra la API en su `aud`, después del client id: `"aud": ["<client id
 
 ### Registrar un sistema que consume varias APIs
 
-Cada API ofrece un rol por perfil de acceso y se asignan al cliente del sistema los que necesite:
-
-```bash
-php artisan oauth:application api-maestros "Datos maestros"
-```
-
-```bash
-php artisan oauth:role maestros-lector "Lectura de API-Maestros" --application=api-maestros
-```
-
-```bash
-php artisan oauth:scope geografia:leer "Leer geografía" --application=api-maestros --role=api-maestros/maestros-lector
-```
-
-```bash
-php artisan oauth:application sistema-x "Sistema X"
-```
-
-```bash
-php artisan oauth:client sistema-x --application=sistema-x --type=client-credentials
-```
-
-```bash
-php artisan oauth:client-role sistema-x api-maestros/maestros-lector
-```
-
-```bash
-php artisan oauth:client-scopes sistema-x
-```
-
-`oauth:scope` exige que la aplicación (`--application`) y los roles (`--role`, como `<aplicación>/<rol>`) existan. Volver a ejecutarlo con otra `--application` mueve el scope sin cambiar su nombre. `oauth:client-role` agrega roles de cualquier aplicación; con `--sync` reemplaza los anteriores. `oauth:client-scopes` muestra la aplicación del cliente y sus scopes agrupados por aplicación. `oauth:client-application` mueve un cliente a otra aplicación y `oauth:role-scopes <aplicación>` lista los scopes que concede cada rol de una aplicación, para revisar que solo concede lo que su aplicación usa.
+Cada API ofrece un rol por perfil de acceso (por ejemplo `api-maestros/maestros-lector`, que concede `geografia:leer`), y en el portal de API-IAM se asignan al cliente del sistema los que necesite. Un cliente puede tener roles de cualquier aplicación.
 
 ### Agregar una API nueva
 
-No hace falta tocar código ni desplegar este servicio:
-
-```bash
-php artisan oauth:application api-matricula "Matrícula de alumnos"
-```
-
-```bash
-php artisan oauth:scope matricula:leer "Leer matrículas" --application=api-matricula --role=api-auth/admin
-```
-
-```bash
-php artisan oauth:assign-role ana@example.com api-auth/admin
-```
-
-`oauth:assign-role` agrega el rol sin quitar los demás del usuario; con `--sync` reemplaza solo los que tiene en la aplicación de ese rol.
+No hace falta tocar código ni desplegar este servicio: en el portal de API-IAM se crea la aplicación (por ejemplo `api-matricula`), sus permisos (`matricula:leer`) y los roles que los conceden, y se asignan esos roles a las personas o a los clientes.
 
 En la API nueva, exige el scope en la ruta:
 

@@ -155,6 +155,18 @@ class AuthenticationEventsTest extends TestCase
         $this->assertNull($event->email);
     }
 
+    public function test_a_microsoft_account_without_a_user_is_recorded(): void
+    {
+        $this->microsoftCallback(self::OID_OTHER, 'nadie@example.com');
+
+        $this->assertGuest();
+        $event = AuthenticationEvent::sole();
+        $this->assertSame('login_fallido', $event->type);
+        $this->assertSame('microsoft', $event->method);
+        $this->assertSame('sin_cuenta', $event->reason);
+        $this->assertNull($event->user_id);
+    }
+
     public function test_the_attempt_rejected_by_the_rate_limit_is_recorded(): void
     {
         for ($i = 0; $i < 10; $i++) {

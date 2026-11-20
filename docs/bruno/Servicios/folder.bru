@@ -11,11 +11,5 @@ docs {
   - **Introspección**: detecta revocaciones, logout y usuarios dados de baja; requiere un token de cliente con scope `introspect`.
   - **Verificación local**: verificar la firma RS256 del JWT con la **Clave pública** y revisar `exp`. No detecta revocaciones hasta que el token vence.
 
-  Registrar la aplicación del servicio, crear su cliente y darle roles (sin roles no puede pedir ningún scope):
-
-  ```bash
-  php artisan oauth:application orders-service "Servicio de órdenes"
-  php artisan oauth:client orders-service --application=orders-service --type=client-credentials
-  php artisan oauth:client-role orders-service api-auth/introspector
-  ```
+  La aplicación del servicio, su cliente `client-credentials` y sus roles (por ejemplo `api-auth/introspector`) se crean en el portal de API-IAM. Sin roles el cliente no puede pedir ningún scope.
 }

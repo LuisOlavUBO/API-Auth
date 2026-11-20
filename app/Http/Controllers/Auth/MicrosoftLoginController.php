@@ -56,10 +56,11 @@ class MicrosoftLoginController extends Controller
             return $this->failed('No pudimos iniciar sesión con Microsoft, intenta de nuevo.');
         }
 
-        $user = User::fromMicrosoft($account->getId(), $email, $account->getName() ?: $email);
+        $user = User::fromMicrosoft($account->getId(), $email);
 
         if ($user === null) {
-            $events->loginFailed('microsoft', 'cuenta_vinculada_a_otra', User::where('email', $email)->first());
+            $sameEmail = User::where('email', $email)->first();
+            $events->loginFailed('microsoft', $sameEmail === null ? 'sin_cuenta' : 'cuenta_vinculada_a_otra', $sameEmail);
 
             return $this->failed('No pudimos asociar tu cuenta de Microsoft, contacta a soporte.');
         }
