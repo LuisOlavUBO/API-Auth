@@ -6,7 +6,7 @@ Permite que los satélites autentiquen a sus usuarios en un solo lugar: IAM mues
 ## Requirements
 
 ### Requirement: Login web
-`GET /api/auth/login` SHALL mostrar el formulario de login en HTML. `POST /api/auth/login` con `email` y `password` MUST iniciar la sesión de IAM y redirigir al destino original, o a la página de login si no hay uno. Con credenciales incorrectas MUST volver al formulario con un mensaje, sin iniciar sesión. Un usuario sin contraseña (creado al entrar con Microsoft) MUST NOT iniciar sesión con el formulario.
+`GET /api/auth/login` SHALL mostrar el formulario de login en HTML. `POST /api/auth/login` con `email` y `password` MUST iniciar la sesión de IAM y redirigir al destino original, o a la página de login si no hay uno. Con credenciales incorrectas MUST volver al formulario con un mensaje, sin iniciar sesión. Un usuario sin contraseña (por ejemplo, uno dado de alta en API-IAM para entrar con Microsoft) MUST NOT iniciar sesión con el formulario.
 
 #### Scenario: Formulario de login
 - **WHEN** una persona sin sesión abre `/api/auth/login`
@@ -154,7 +154,7 @@ Con Entra ID configurado, el login web SHALL ofrecer "Ingresar con Microsoft": `
 - **THEN** vuelve al login con un mensaje de error y no queda con sesión
 
 ### Requirement: Usuario de una cuenta de Microsoft
-El usuario de una cuenta de Microsoft SHALL identificarse por su `oid` de Entra ID. Sin usuario con ese `oid`, MUST vincularse el del mismo email (conserva su contraseña); si ese usuario tiene otro `oid`, MUST NOT iniciar sesión y SHALL mostrar "No pudimos asociar tu cuenta de Microsoft, contacta a soporte". Sin usuario con ese email, MUST crearse uno sin contraseña y sin roles.
+El usuario de una cuenta de Microsoft SHALL identificarse por su `oid` de Entra ID. Sin usuario con ese `oid`, MUST vincularse el del mismo email (conserva su contraseña). API-Auth MUST NOT crear usuarios: si no hay usuario con ese `oid` ni con ese email, o si el usuario de ese email tiene otro `oid`, MUST NOT iniciar sesión y SHALL mostrar "No pudimos asociar tu cuenta de Microsoft, contacta a soporte".
 
 #### Scenario: Usuario ya vinculado
 - **WHEN** entra con Microsoft una persona cuyo `oid` ya tiene un usuario, aunque su email en Microsoft haya cambiado
@@ -170,7 +170,7 @@ El usuario de una cuenta de Microsoft SHALL identificarse por su `oid` de Entra 
 
 #### Scenario: Persona nueva
 - **WHEN** entra con Microsoft una persona cuyo `oid` y email no tienen usuario
-- **THEN** se crea su usuario sin contraseña y sin roles, inicia sesión y, al volver a la autorización de un satélite, ve "No tienes acceso a este sistema, contacta a soporte"
+- **THEN** vuelve al login con "No pudimos asociar tu cuenta de Microsoft, contacta a soporte", no queda con sesión, no se crea ningún usuario y se registra `login_fallido` con motivo `sin_cuenta`
 
 ### Requirement: Usuarios dados de baja en el login web
 Un usuario dado de baja MUST NOT iniciar sesión en IAM: con contraseña SHALL ver el mismo mensaje que con credenciales incorrectas, y con Microsoft SHALL ver "No tienes acceso, contacta a soporte". Si es dado de baja con la sesión abierta, la siguiente solicitud de autorización MUST cerrar esa sesión y mostrar "No tienes acceso a este sistema, contacta a soporte", sin entregar un código.
