@@ -21,6 +21,12 @@ class TokenAudience
     protected array $roles = [];
 
     /**
+     * The nonce of the authorization whose code is being exchanged, for the id_token
+     * (IdTokenResponse). ScopeRepository sets it on every issuance, null when there is none.
+     */
+    protected ?string $nonce = null;
+
+    /**
      * Set the applications and roles of the next token (none: a token for no particular application).
      *
      * @param  string[]  $applications
@@ -44,5 +50,24 @@ class TokenAudience
         $this->roles = [];
 
         return $taken;
+    }
+
+    /**
+     * Set the nonce of the token being issued (null: none).
+     */
+    public function useNonce(?string $nonce): void
+    {
+        $this->nonce = $nonce;
+    }
+
+    /**
+     * Take the nonce of the token being issued and clear it.
+     */
+    public function pullNonce(): ?string
+    {
+        $nonce = $this->nonce;
+        $this->nonce = null;
+
+        return $nonce;
     }
 }

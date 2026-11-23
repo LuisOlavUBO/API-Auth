@@ -4,9 +4,11 @@ namespace App\Providers;
 
 use App\Models\Client;
 use App\Services\AccessTokenRepository;
+use App\Services\AuthCodeRepository;
 use App\Services\AuthenticationEvents;
 use App\Services\ClientEntityRepository;
 use App\Services\ClientRepository;
+use App\Services\IdTokenResponse;
 use App\Services\ScopeRepository;
 use App\Services\TokenAudience;
 use Illuminate\Cache\RateLimiter;
@@ -16,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Passport\Bridge\AccessTokenRepository as PassportAccessTokenRepository;
+use Laravel\Passport\Bridge\AuthCodeRepository as PassportAuthCodeRepository;
 use Laravel\Passport\Bridge\ClientRepository as PassportClientEntityRepository;
 use Laravel\Passport\Bridge\ScopeRepository as PassportScopeRepository;
 use Laravel\Passport\ClientRepository as PassportClientRepository;
@@ -40,6 +43,9 @@ class AppServiceProvider extends ServiceProvider
         // the API and AccessTokenRepository creates the token with it.
         $this->app->singleton(TokenAudience::class);
         $this->app->bind(PassportAccessTokenRepository::class, AccessTokenRepository::class);
+
+        // Keeps the nonce of the authorization for the id_token of OpenID Connect.
+        $this->app->bind(PassportAuthCodeRepository::class, AuthCodeRepository::class);
 
         // Records the clients that oauth/token rejects with invalid_client.
         $this->app->bind(PassportClientEntityRepository::class, ClientEntityRepository::class);
@@ -96,6 +102,9 @@ class AppServiceProvider extends ServiceProvider
             'title' => 'Solicitud no válida',
             'message' => 'Esta aplicación no requiere consentimiento: quita prompt=consent de la solicitud.',
         ], 400));
+
+        // Adds the id_token of OpenID Connect to the token responses of user tokens with "openid".
+        Passport::useAuthorizationServerResponseType(new IdTokenResponse);
 
         Passport::tokensExpireIn(now()->addMinutes(config('oauth.access_token_ttl')));
         Passport::refreshTokensExpireIn(now()->addMinutes(config('oauth.refresh_token_ttl')));

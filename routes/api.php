@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Auth\OpenIdConnectController;
 use App\Http\Controllers\Auth\SessionRevocationController;
 use App\Http\Controllers\Auth\TokenIntrospectionController;
 use Illuminate\Support\Facades\Route;
@@ -39,6 +40,12 @@ Route::prefix('v1')->group(function () {
 Route::post('oauth/token', [AccessTokenController::class, 'issueToken'])
     ->middleware('throttle:oauth-token')
     ->name('passport.token');
+
+// OpenID Connect. Not versioned: their paths are the standard ones, relative to the issuer (/api/auth).
+Route::get('.well-known/openid-configuration', [OpenIdConnectController::class, 'configuration']);
+Route::get('.well-known/jwks.json', [OpenIdConnectController::class, 'jwks']);
+Route::get('oauth/userinfo', [OpenIdConnectController::class, 'userinfo'])
+    ->middleware(['auth:api', CheckToken::using('openid')]);
 
 // Docs: Swagger UI over docs/openapi/openapi.yaml, without a token.
 Route::view('docs/swagger', 'docs.swagger');

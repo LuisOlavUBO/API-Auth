@@ -1,0 +1,10 @@
+meta {
+  name: OpenID Connect
+  seq: 4
+}
+
+docs {
+  OIDC mínimo sobre el login central, para clientes OIDC como Ucampus. El `issuer` es `{{baseUrl}}/api/auth` (en el servidor, `APP_URL` debe ser la URL pública).
+
+  Un cliente OIDC se configura solo con la URL de **Descubrimiento**. Pide `scope=openid` (más `profile` y `email` si los usa) en **Login central / Código con PKCE**, con PKCE `S256` y opcionalmente `nonce`, y recibe un `id_token` al canjear el código. La persona se identifica con la claim `id_persona` (texto); `sub` es el `uuid` del usuario.
+}

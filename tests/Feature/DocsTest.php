@@ -58,7 +58,8 @@ class DocsTest extends TestCase
     }
 
     /**
-     * Passport's own routes are off: only the token and authorize endpoints are published, under the API prefix.
+     * Passport's own routes are off: only the token and authorize endpoints are published, under the API prefix,
+     * next to our own userinfo of OpenID Connect.
      */
     public function test_only_the_prefixed_token_and_authorize_endpoints_are_exposed(): void
     {
@@ -68,7 +69,7 @@ class DocsTest extends TestCase
         $this->assertContains('api/auth/oauth/authorize', $uris);
         $this->assertEmpty($uris->filter(fn (string $uri) => str_starts_with($uri, 'oauth/')));
         $this->assertEqualsCanonicalizing(
-            ['api/auth/oauth/token', 'api/auth/oauth/authorize'],
+            ['api/auth/oauth/token', 'api/auth/oauth/authorize', 'api/auth/oauth/userinfo'],
             $uris->filter(fn (string $uri) => str_starts_with($uri, 'api/auth/oauth/'))->unique()->values()->all(),
         );
     }
