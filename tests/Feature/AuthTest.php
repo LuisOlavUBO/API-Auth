@@ -7,6 +7,7 @@ use App\Models\OAuthScope;
 use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\RoleScopeSeeder;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -90,6 +91,23 @@ class AuthTest extends TestCase
         $this->assertSame(2, User::whereNull('rut')->count());
     }
 
+    public function test_several_users_can_be_saved_without_a_person(): void
+    {
+        User::factory()->count(2)->create();
+
+        $this->assertSame(2, User::whereNull('id_persona')->count());
+    }
+
+    public function test_two_users_cannot_have_the_same_person(): void
+    {
+        User::factory()->withPersona(1029)->create();
+        $beto = User::factory()->create();
+
+        $this->expectException(QueryException::class);
+
+        $beto->update(['id_persona' => 1029]);
+    }
+
     public function test_users_get_a_unique_uuid_and_keep_a_numeric_id(): void
     {
         $ana = $this->createUser();
@@ -104,7 +122,7 @@ class AuthTest extends TestCase
     public function test_user_can_fetch_the_profile(): void
     {
         $user = $this->createUser();
-        $user->update(['rut' => '12345678-5']);
+        $user->update(['rut' => '12345678-5', 'id_persona' => 1029]);
 
         $token = $this->login();
 
@@ -116,7 +134,18 @@ class AuthTest extends TestCase
             ->assertJsonPath('email', 'ana@example.com')
             ->assertJsonPath('uuid', $user->fresh()->uuid)
             ->assertJsonPath('rut', '12345678-5')
+            ->assertJsonPath('id_persona', 1029)
             ->assertJsonMissingPath('password');
+    }
+
+    public function test_the_profile_of_a_user_without_a_person_has_a_null_id_persona(): void
+    {
+        $this->createUser();
+
+        $this->withToken($this->login()['access_token'])
+            ->getJson('/api/auth/v1/me')
+            ->assertOk()
+            ->assertJsonPath('id_persona', null);
     }
 
     public function test_me_requires_a_token(): void

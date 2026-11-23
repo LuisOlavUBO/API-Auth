@@ -66,6 +66,16 @@ class UserFactory extends Factory
     }
 
     /**
+     * Link the user to a person of API-Personas.
+     */
+    public function withPersona(int $idPersona): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'id_persona' => $idPersona,
+        ]);
+    }
+
+    /**
      * Give the user the given roles.
      */
     public function withRoles(Role ...$roles): static
