@@ -25,7 +25,7 @@ class TokenIntrospectionTest extends TestCase
 
         $this->seed(RoleScopeSeeder::class);
 
-        $ana = User::factory()->withRoles(Role::firstWhere('name', 'user'))->create(['email' => 'ana@example.com', 'password' => 'secret-password', 'rut' => '12345678-5']);
+        $ana = User::factory()->withRoles(Role::firstWhere('name', 'user'))->create(['email' => 'ana@example.com', 'password' => 'secret-password', 'rut' => '12345678-5', 'id_persona' => 1029]);
 
         $this->userToken = $this->tokensFor($ana, $this->createCodeClient())['access_token'];
     }
@@ -65,6 +65,7 @@ class TokenIntrospectionTest extends TestCase
             ->assertJsonPath('uuid', User::firstWhere('email', 'ana@example.com')->uuid)
             ->assertJsonPath('user.uuid', User::firstWhere('email', 'ana@example.com')->uuid)
             ->assertJsonPath('user.rut', '12345678-5')
+            ->assertJsonPath('user.id_persona', 1029)
             ->assertJsonStructure(['client_id', 'sub', 'scope', 'exp']);
     }
 

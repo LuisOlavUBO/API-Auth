@@ -17,7 +17,7 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Passport\Contracts\OAuthenticatable;
 use Laravel\Passport\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'rut', 'entra_oid'])]
+#[Fillable(['name', 'email', 'password', 'rut', 'id_persona', 'entra_oid'])]
 #[Hidden(['password', 'remember_token', 'entra_oid'])]
 class User extends Authenticatable implements OAuthenticatable
 {
@@ -132,6 +132,7 @@ class User extends Authenticatable implements OAuthenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'id_persona' => 'integer',
             'disabled_at' => 'datetime',
             'temporary_password_expires_at' => 'datetime',
         ];
