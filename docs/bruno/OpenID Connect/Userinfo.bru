@@ -1,0 +1,43 @@
+meta {
+  name: Userinfo
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/auth/oauth/userinfo
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("responde 200 con el sub del usuario", function () {
+    expect(res.status).to.equal(200);
+    expect(res.body).to.have.property("sub");
+  });
+}
+
+docs {
+  # Userinfo
+
+  `GET /api/auth/oauth/userinfo` · Bearer de usuario con scope `openid`
+
+  Requiere un `{{accessToken}}` obtenido en **Login central / Código con PKCE** con `scope=openid` (más `email` o `profile`). Sin token o con un token de cliente responde 401; sin `openid`, 403.
+
+  ## Respuesta 200 (con `openid email`)
+
+  ```json
+  {
+    "sub": "01a1a2ca-60a6-7113-a7c8-ac6d008e5f8b",
+    "id_persona": "1029",
+    "email": "ana@example.com",
+    "email_verified": true
+  }
+  ```
+
+  Nunca incluye el RUT. `name` solo con `profile`; `id_persona` solo si el usuario está vinculado a una persona.
+}

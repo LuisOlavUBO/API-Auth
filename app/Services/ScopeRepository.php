@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Laravel\Passport\Bridge\Scope;
 use Laravel\Passport\Bridge\ScopeRepository as PassportScopeRepository;
@@ -33,10 +34,14 @@ class ScopeRepository extends PassportScopeRepository
 
     /**
      * Only scopes registered in oauth_scopes exist ("*" is not one of them), and those of a
-     * disabled application do not.
+     * disabled application do not. The scopes of OpenID Connect exist outside the catalog.
      */
     public function getScopeEntityByIdentifier(string $identifier): ?ScopeEntityInterface
     {
+        if (in_array($identifier, OpenIdConnect::SCOPES, true)) {
+            return new Scope($identifier);
+        }
+
         return OAuthScope::vigentes()->where('name', $identifier)->exists() ? new Scope($identifier) : null;
     }
 
@@ -66,6 +71,9 @@ class ScopeRepository extends PassportScopeRepository
         ?string $authCodeId = null
     ): array {
         $this->audience->issueFor();
+
+        // When a code is exchanged, the nonce of its authorization goes to the id_token.
+        $this->audience->useNonce($authCodeId === null ? null : Cache::pull(AuthCodeRepository::NONCE_KEY.$authCodeId));
 
         if ($userIdentifier !== null) {
             return $this->finalizeUserScopes($scopes, $grantType, $clientEntity, $userIdentifier);
@@ -109,7 +117,9 @@ class ScopeRepository extends PassportScopeRepository
         $allowed = $user && $applicationId ? $user->allowedScopeNames($applicationId) : [];
         $roles = $user && $applicationId ? $user->rolesIn($applicationId)->pluck('name')->all() : [];
 
-        $scopes = collect($scopes);
+        // The scopes of OpenID Connect are not permissions: the rules below apply to the rest.
+        [$openIdScopes, $scopes] = collect($scopes)
+            ->partition(fn (ScopeEntityInterface $scope): bool => in_array($scope->getIdentifier(), OpenIdConnect::SCOPES, true));
 
         if ($grantType !== 'refresh_token' && $scopes->isEmpty()) {
             $final = array_map(fn (string $name): ScopeEntityInterface => new Scope($name), $allowed);
@@ -126,7 +136,7 @@ class ScopeRepository extends PassportScopeRepository
 
         $this->audience->issueFor($this->applicationsOwning($final), $roles);
 
-        return $final;
+        return [...$openIdScopes->values()->all(), ...$final];
     }
 
     /**

@@ -126,7 +126,7 @@ UPDATE oauth_clients SET revoked = 1 WHERE id = '<PASSPORT_PASSWORD_CLIENT_ID>';
 | POST | `/users/{uuid}/revoke` | Bearer (cliente, scope `sessions:revoke`) | Revoca todos los tokens del usuario y cierra su sesión de IAM → `204` |
 | GET | `/public-key` | — | Clave pública PEM para verificar JWT localmente |
 
-Además `POST /api/auth/oauth/token` es el endpoint estándar OAuth2 de Passport, usado por los microservicios para el grant `client_credentials` y por los satélites para canjear el código del login central y renovar sus tokens (`refresh_token`). No hay `/v1/login` ni `/v1/refresh`, y el password grant está apagado (`unsupported_grant_type`). Junto con `GET /api/auth/oauth/authorize` del [login central](#login-central-sso-de-los-satélites-monolito) son las únicas rutas de Passport registradas: las demás (aprobar o rechazar, `/oauth/device`, `/oauth/token/refresh`) están apagadas con `Passport::ignoreRoutes()`. El login central agrega las páginas web `GET/POST /api/auth/login`, `GET/POST /api/auth/logout` y `GET/POST /api/auth/password`, que responden HTML y no problem+json. `GET /api/auth/v1/salud` responde `{"estado": "OK", "base_datos": "OK"}` o `503` si la base no responde (misma forma que en API-Maestros). `/up` solo indica que Laravel arrancó.
+Además `POST /api/auth/oauth/token` es el endpoint estándar OAuth2 de Passport, usado por los microservicios para el grant `client_credentials` y por los satélites para canjear el código del login central y renovar sus tokens (`refresh_token`). No hay `/v1/login` ni `/v1/refresh`, y el password grant está apagado (`unsupported_grant_type`). Junto con `GET /api/auth/oauth/authorize` del [login central](#login-central-sso-de-los-satélites-monolito) son las únicas rutas de Passport registradas: las demás (aprobar o rechazar, `/oauth/device`, `/oauth/token/refresh`) están apagadas con `Passport::ignoreRoutes()`. El login central agrega las páginas web `GET/POST /api/auth/login`, `GET/POST /api/auth/logout` y `GET/POST /api/auth/password`, que responden HTML y no problem+json. [OpenID Connect](#openid-connect-ucampus-y-otros-clientes-oidc) agrega `GET /api/auth/.well-known/openid-configuration`, `GET /api/auth/.well-known/jwks.json` y `GET /api/auth/oauth/userinfo`. `GET /api/auth/v1/salud` responde `{"estado": "OK", "base_datos": "OK"}` o `503` si la base no responde (misma forma que en API-Maestros). `/up` solo indica que Laravel arrancó.
 
 El formulario de login (`POST /api/auth/login`) tiene rate limit de 10 req/min por email+IP, y `/api/auth/oauth/token` de 120 req/min por cliente.
 
@@ -242,6 +242,21 @@ Cómo se identifica a la persona:
 - API-Auth no crea usuarios: si no hay un usuario con su `oid` ni con su email, ve "No pudimos asociar tu cuenta de Microsoft, contacta a soporte" y no inicia sesión. La persona se da de alta antes en API-IAM (con acceso `microsoft` queda sin contraseña y no puede entrar con email y clave).
 
 El logout central cierra la sesión de IAM pero no la de Microsoft: si la persona vuelve a elegir "Ingresar con Microsoft" en el mismo navegador, entra sin escribir su clave. Lo mismo pasa con `prompt=login`.
+
+### OpenID Connect (Ucampus y otros clientes OIDC)
+
+IAM ofrece un OIDC mínimo sobre el mismo login central, para sistemas que se integran con un proveedor OIDC estándar (por ejemplo Ucampus). El `issuer` es `<APP_URL>/api/auth`: **`APP_URL` debe ser la URL pública** (por ejemplo `https://apidev.ubo.cl`), o los clientes rechazarán los tokens. Comprobarlo al desplegar abriendo el descubrimiento.
+
+1. En el portal de API-IAM, crear la aplicación del sistema (por ejemplo `ucampus`), sus roles y un cliente de código de autorización con sus redirecciones. Asignar los roles a las personas: sin roles ven "No tienes acceso" (403).
+2. Entregar al sistema:
+   - URL de descubrimiento: `https://<host>/api/auth/.well-known/openid-configuration` (de ahí salen los demás endpoints y el JWKS).
+   - `client_id` y secreto. Se envían en `Authorization: Basic` (`client_secret_basic`) o en el cuerpo (`client_secret_post`).
+   - Scopes: `openid`, más `profile` (nombre) y `email` si los usa. No son permisos; el token lleva además los permisos de los roles de la persona.
+   - PKCE `S256` es obligatorio. `nonce` es opcional y vuelve en el `id_token`.
+3. Al canjear el código, la respuesta trae `id_token` (RS256, con `kid` del JWKS): `sub` es el `uuid` del usuario y la persona viene en la claim `id_persona` (texto), si el usuario está vinculado a una persona de API-Personas. El RUT nunca viaja. `GET /api/auth/oauth/userinfo` entrega los mismos datos con el access token.
+4. Logout: el sistema manda a `GET /api/auth/logout?id_token_hint=<id_token>&post_logout_redirect_uri=<url>&state=<state>` (`end_session_endpoint`). La URL debe tener el mismo origen que una redirección registrada del cliente, igual que `return`.
+
+Fuera de alcance: flujos implicit e hybrid, registro dinámico de clientes, `private_key_jwt`, logout por front-channel o back-channel y la certificación OpenID.
 
 ## Integrar otro microservicio
 
