@@ -45,6 +45,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get purge -y --auto-remove $PHPIZE_DEPS \
     && rm -rf /var/lib/apt/lists/*
 
+# unixODBC connection pooling: each PHP-FPM worker reuses its SQL Server connection between
+# requests instead of opening a new one (~0.6 s with the database behind the VPN).
+RUN sed -i '/^\[ODBC Driver 18 for SQL Server\]/a CPTimeout=120' /etc/odbcinst.ini \
+    && printf '[ODBC]\nPooling=Yes\n\n' | cat - /etc/odbcinst.ini > /tmp/odbcinst.ini \
+    && mv /tmp/odbcinst.ini /etc/odbcinst.ini
+
 # Already compiled extensions and their .ini files
 COPY --from=build /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
 COPY --from=build /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/

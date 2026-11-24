@@ -64,6 +64,8 @@ docker compose up -d --build
 
 `docker-compose.prod.yml` levanta `app` (imagen de `Dockerfile.prod`) y `nginx`. El healthcheck de nginx llama a `/api/auth/v1/salud`, que consulta la base, así que el estado `healthy` cubre nginx → PHP-FPM → SQL Server. La imagen no incluye dependencias de desarrollo, `.env` ni llaves; `ubo/common` se descarga de GitHub como cualquier otra dependencia, sin credenciales. Al arrancar, el entrypoint valida las variables críticas, carga las llaves y ejecuta `php artisan optimize`. Con `RUN_MIGRATIONS=true` también corre las migraciones.
 
+Latencia con la base: la imagen activa el pooling de conexiones de unixODBC (`/etc/odbcinst.ini`), así que cada worker de PHP-FPM reutiliza su conexión a SQL Server entre solicitudes, y `config/database.php` ejecuta cada consulta en un solo viaje (`PDO::SQLSRV_ATTR_DIRECT_QUERY`). Aun así, API-Auth debe correr en el mismo sitio de red que su base: con la base de desarrollo detrás de la VPN (~120 ms de ida y vuelta) cada consulta cuesta ~120 ms. Con un solo contenedor, `SESSION_DRIVER=file` y `CACHE_STORE=file` evitan además abrir la conexión en solicitudes que no consultan la base (así está QA).
+
 Construir y publicar, en el PC:
 
 ```bash
