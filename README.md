@@ -5,7 +5,7 @@ Servicio OAuth2 que emite y valida tokens JWT para el resto de microservicios.
 - **Usuarios finales**: entran solo por el [login central](#login-central-sso-de-los-satélites-monolito) (código con PKCE, con contraseña o con Microsoft); la contraseña nunca se envía a la API. Con su token, perfil y logout en `/api/auth/v1`.
 - **Otros microservicios**: se autentican con *client credentials* y validan tokens de usuario vía `/introspect`, o localmente con la clave pública.
 - **Rutas**: todas bajo `/api/auth` ([ApiPrefix.php](app/Http/ApiPrefix.php)): `/api/auth/v1/...` y `POST /api/auth/oauth/token`.
-- **Documentación**: Swagger UI en `/api/auth/docs/swagger` (`/` y `/docs/swagger` redirigen ahí). El contrato está en [`docs/openapi/openapi.yaml`](docs/openapi/openapi.yaml) y se sirve en `/api/auth/docs/openapi.yaml`; un test verifica que documente todas las rutas `/api`.
+- **Documentación**: Swagger UI en `/api/auth/docs/swagger` (`/` y `/docs/swagger` redirigen ahí). El contrato está en [`docs/openapi/openapi.yaml`](docs/openapi/openapi.yaml) y se sirve en `/api/auth/docs/openapi.yaml`; un test verifica que documente todas las rutas `/api`. `API_DOCS=false` oculta Swagger, la especificación y esas redirecciones (responden 404); el descubrimiento OpenID Connect y `v1/public-key` siguen públicos.
 - **Estándar UBO**: errores RFC 9457, tracing con [`ubo/common`](https://github.com/LuisOlavUBO/UBO-Common) y tests contra SQL Server, como [API-Maestros](../API-Maestros).
 
 ## Instalación
@@ -219,6 +219,7 @@ La contraseña solo se escribe en IAM. Un satélite monolito manda el navegador 
 - `SESSION_SECURE_COOKIE=true` (el compose de producción ya lo fija): la cookie de sesión solo viaja por HTTPS.
 - `TRUSTED_PROXIES`: proxies cuyas cabeceras `X-Forwarded-*` se aceptan, para que los límites de solicitudes vean la IP real. Vacío no confía en nadie; `*` confía en todos (solo si el servicio únicamente es alcanzable por el proxy; si no, cualquiera puede falsificar su IP); o una lista de IP o redes separada por comas, p. ej. `172.18.0.0/16`.
 - `OAUTH_TOKEN_RATE_LIMIT`: solicitudes por minuto a `/api/auth/oauth/token` por `client_id` (120 por omisión).
+- `API_DOCS`: publica Swagger y la especificación OpenAPI (encendida por omisión). En QA va `API_DOCS=false`. Las rutas se cachean al arrancar el contenedor, así que tras cambiarla hay que recrearlo (`docker compose -f docker-compose.prod.yml up -d --no-build`).
 - Si estaban definidas, quitar `SESSION_PATH` y bajar `PASSPORT_REFRESH_TOKEN_TTL` a 120.
 
 ### Ingresar con Microsoft (Entra ID)
