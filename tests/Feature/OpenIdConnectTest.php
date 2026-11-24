@@ -137,8 +137,9 @@ class OpenIdConnectTest extends TestCase
         $this->assertSame('https://apidev.ubo.cl/api/auth', $claims['iss']);
         $this->assertSame($this->ana->uuid, $claims['sub']);
         $this->assertSame(strtolower($this->client->getKey()), $claims['aud']);
-        $this->assertSame($this->claimsOf($tokens['access_token'])['exp'], $claims['exp']);
-        $this->assertArrayHasKey('iat', $claims);
+        $this->assertSame((int) $this->claimsOf($tokens['access_token'])['exp'], $claims['exp']);
+        $this->assertIsInt($claims['iat']);
+        $this->assertIsInt($claims['exp']);
     }
 
     public function test_a_code_without_openid_returns_no_id_token(): void
