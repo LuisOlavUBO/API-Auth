@@ -30,6 +30,44 @@ class DocsTest extends TestCase
         $this->assertSame('3.1.0', Yaml::parse($response->streamedContent())['openapi']);
     }
 
+    public function test_api_docs_false_hides_the_docs_and_their_redirects(): void
+    {
+        $this->bootWithDocsOff();
+
+        foreach (['/api/auth/docs/swagger', '/api/auth/docs/openapi.yaml'] as $uri) {
+            $response = $this->get($uri)->assertNotFound();
+            $this->assertStringStartsWith('application/problem+json', $response->headers->get('Content-Type'));
+        }
+
+        $this->get('/')->assertNotFound();
+        $this->get('/docs/swagger')->assertNotFound();
+    }
+
+    public function test_api_docs_false_keeps_the_discovery_and_the_public_key(): void
+    {
+        $this->bootWithDocsOff();
+
+        $this->get('/api/auth/.well-known/openid-configuration')->assertOk();
+        $this->get('/api/auth/.well-known/jwks.json')->assertOk();
+        $this->get('/api/auth/v1/public-key')->assertOk();
+    }
+
+    /**
+     * Routes are registered when the application boots, so it is rebooted with API_DOCS=false.
+     */
+    private function bootWithDocsOff(): void
+    {
+        putenv('API_DOCS=false');
+        $_ENV['API_DOCS'] = $_SERVER['API_DOCS'] = 'false';
+
+        $this->beforeApplicationDestroyed(function (): void {
+            putenv('API_DOCS');
+            unset($_ENV['API_DOCS'], $_SERVER['API_DOCS']);
+        });
+
+        $this->refreshApplication();
+    }
+
     /**
      * Every /api route (the docs aside) is documented and every documented path exists.
      */

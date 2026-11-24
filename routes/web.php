@@ -13,8 +13,11 @@ use Laravel\Passport\Http\Controllers\AuthorizationController;
 
 // This is an API: the root leads to the docs. They live under the API prefix so that
 // ubo-nginx-proxy routes them to this container; these shortcuts are for direct access.
-Route::redirect('/', '/'.ApiPrefix::BASE.'/docs/swagger');
-Route::redirect('docs/swagger', '/'.ApiPrefix::BASE.'/docs/swagger');
+// API_DOCS=false hides them along with the docs (404).
+if (config('app.docs')) {
+    Route::redirect('/', '/'.ApiPrefix::BASE.'/docs/swagger');
+    Route::redirect('docs/swagger', '/'.ApiPrefix::BASE.'/docs/swagger');
+}
 
 // The central login: the pages for people (ApiPrefix::WEB_PAGES), with session and CSRF.
 Route::prefix(ApiPrefix::BASE)->group(function () {

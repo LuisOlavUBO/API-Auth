@@ -47,11 +47,13 @@ Route::get('.well-known/jwks.json', [OpenIdConnectController::class, 'jwks']);
 Route::get('oauth/userinfo', [OpenIdConnectController::class, 'userinfo'])
     ->middleware(['auth:api', CheckToken::using('openid')]);
 
-// Docs: Swagger UI over docs/openapi/openapi.yaml, without a token.
-Route::view('docs/swagger', 'docs.swagger');
+// Docs: Swagger UI over docs/openapi/openapi.yaml, without a token. API_DOCS=false hides them (404).
+if (config('app.docs')) {
+    Route::view('docs/swagger', 'docs.swagger');
 
-Route::get('docs/openapi.yaml', function () {
-    return response()->file(base_path('docs/openapi/openapi.yaml'), [
-        'Content-Type' => 'application/yaml; charset=UTF-8',
-    ]);
-});
+    Route::get('docs/openapi.yaml', function () {
+        return response()->file(base_path('docs/openapi/openapi.yaml'), [
+            'Content-Type' => 'application/yaml; charset=UTF-8',
+        ]);
+    });
+}
