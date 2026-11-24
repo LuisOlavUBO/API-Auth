@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\User;
 use DateTimeImmutable;
 use Lcobucci\JWT\Configuration;
+use Lcobucci\JWT\Encoding\ChainedFormatter;
 use Lcobucci\JWT\Signer\Key\InMemory;
 use Lcobucci\JWT\Signer\Rsa\Sha256;
 use League\OAuth2\Server\Entities\AccessTokenEntityInterface;
@@ -49,7 +50,8 @@ class IdTokenResponse extends BearerTokenResponse
             InMemory::plainText($oidc->publicKey()),
         );
 
-        $builder = $configuration->builder()
+        // Whole seconds in "iat" and "exp": some OIDC clients reject the microseconds the default formatter writes.
+        $builder = $configuration->builder(ChainedFormatter::withUnixTimestampDates())
             ->withHeader('kid', $oidc->keyId())
             ->issuedBy($oidc->issuer())
             ->permittedFor(strtolower($accessToken->getClient()->getIdentifier()))
