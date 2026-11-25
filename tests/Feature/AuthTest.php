@@ -133,8 +133,8 @@ class AuthTest extends TestCase
             ->assertOk()
             ->assertJsonPath('email', 'ana@example.com')
             ->assertJsonPath('uuid', $user->fresh()->uuid)
-            ->assertJsonPath('rut', '12345678-5')
             ->assertJsonPath('id_persona', 1029)
+            ->assertJsonMissingPath('rut')
             ->assertJsonMissingPath('password');
     }
 
