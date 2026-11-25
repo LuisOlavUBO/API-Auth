@@ -214,7 +214,8 @@ paths:
 
         **OpenID Connect:** si el token de usuario lleva `openid`, la respuesta trae además `id_token` (al canjear
         el código y al renovar). Las credenciales del cliente pueden ir en el cuerpo (`client_secret_post`) o en
-        `Authorization: Basic` (`client_secret_basic`).
+        `Authorization: Basic` (`client_secret_basic`); en la cabecera, el id y el secreto pueden ir codificados
+        como `application/x-www-form-urlencoded` (RFC 6749 §2.3.1), y se decodifican antes de validar el cliente.
 
         - Con `api`: el token solo sirve en esa API. Sin `scope` trae todos los scopes que los roles del
           cliente le dan en esa API; con `scope`, todos deben pertenecer a ella.

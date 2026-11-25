@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\OpenIdConnectController;
 use App\Http\Controllers\Auth\SessionRevocationController;
 use App\Http\Controllers\Auth\TokenIntrospectionController;
+use App\Http\Middleware\DecodeBasicClientCredentials;
 use Illuminate\Support\Facades\Route;
 use Laravel\Passport\Http\Controllers\AccessTokenController;
 use Laravel\Passport\Http\Middleware\CheckToken;
@@ -38,7 +39,7 @@ Route::prefix('v1')->group(function () {
 // others). Not versioned: it is OAuth2's standard endpoint, and it keeps OAuth2's error format
 // because Passport renders its own exceptions before ProblemRenderer is asked.
 Route::post('oauth/token', [AccessTokenController::class, 'issueToken'])
-    ->middleware('throttle:oauth-token')
+    ->middleware([DecodeBasicClientCredentials::class, 'throttle:oauth-token'])
     ->name('passport.token');
 
 // OpenID Connect. Not versioned: their paths are the standard ones, relative to the issuer (/api/auth).
