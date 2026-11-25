@@ -4,7 +4,7 @@
 @section('subtitle', 'Ingresa con tu cuenta institucional para continuar.')
 
 @section('content')
-    <form method="POST" action="{{ route('login') }}">
+    <form id="login" method="POST" action="{{ route('login') }}">
         @csrf
         <label for="email">Correo</label>
         <input id="email" name="email" type="email" value="{{ old('email') }}" placeholder="nombre@ubo.cl" autocomplete="username" required autofocus>
@@ -18,8 +18,30 @@
             <p class="error">{{ $message }}</p>
         @enderror
 
-        <button type="submit">Ingresar</button>
+        <button type="submit"><span class="spinner" aria-hidden="true"></span><span>Ingresar</span></button>
     </form>
+
+    <script>
+        {{-- Al enviar: campos de solo lectura (disabled no se enviaría), botón bloqueado y spinner. --}}
+        (() => {
+            const formulario = document.getElementById('login');
+            const boton = formulario.querySelector('button');
+            const restablecer = () => {
+                formulario.classList.remove('enviando');
+                formulario.querySelectorAll('input').forEach((campo) => campo.readOnly = false);
+                boton.disabled = false;
+                boton.lastElementChild.textContent = 'Ingresar';
+            };
+            formulario.addEventListener('submit', () => {
+                formulario.classList.add('enviando');
+                formulario.querySelectorAll('input').forEach((campo) => campo.readOnly = true);
+                boton.disabled = true;
+                boton.lastElementChild.textContent = 'Ingresando…';
+            });
+            // Al volver con "atrás", el navegador puede restaurar la página bloqueada.
+            window.addEventListener('pageshow', (evento) => evento.persisted && restablecer());
+        })();
+    </script>
 
     @if (\App\Http\Controllers\Auth\MicrosoftLoginController::isEnabled())
         <p class="separador">o continúa con</p>

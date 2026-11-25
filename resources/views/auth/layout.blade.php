@@ -56,6 +56,12 @@
         button { margin-top: .5rem; color: #fff; background: var(--primario); border: 0; box-shadow: 0 1px 2px rgba(16, 24, 40, .05); }
         button:hover { background: var(--primario-hover); }
         button:focus-visible, .boton-secundario:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--foco); }
+        .spinner { display: none; width: 1rem; height: 1rem; border: 2px solid rgba(255, 255, 255, .35); border-top-color: #fff; border-radius: 50%; animation: girar .7s linear infinite; }
+        @keyframes girar { to { transform: rotate(360deg); } }
+        .enviando .spinner { display: block; }
+        .enviando button { background: var(--primario-hover); cursor: progress; }
+        .enviando input { opacity: .6; cursor: not-allowed; }
+        .enviando ~ .boton-secundario { opacity: .5; pointer-events: none; }
         .boton-secundario { color: var(--texto); background: var(--campo); border: 1px solid var(--borde); }
         .boton-secundario:hover { border-color: var(--suave); }
         .error { margin: -.75rem 0 1.25rem; color: var(--error); font-size: .85rem; }
