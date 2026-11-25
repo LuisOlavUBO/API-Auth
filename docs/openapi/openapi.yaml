@@ -673,7 +673,7 @@ components:
   schemas:
     Usuario:
       type: object
-      required: [id, uuid, id_persona, rut, name, email, email_verified_at, created_at]
+      required: [id, uuid, id_persona, name, email, email_verified_at, created_at]
       properties:
         id:
           type: integer
@@ -685,9 +685,6 @@ components:
         id_persona:
           type: [integer, 'null']
           description: Identificador institucional de la persona en API-Personas; `null` si el usuario no es una persona o aún no está vinculado. Lo carga API-IAM.
-        rut:
-          type: [string, 'null']
-          description: RUT sin puntos, con guion y dígito verificador en mayúscula (`12345678-K`); `null` si no tiene. No viaja en el token.
         name: { type: string }
         email: { type: string, format: email }
         email_verified_at: { type: [string, 'null'], format: date-time }

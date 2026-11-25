@@ -29,11 +29,11 @@ El sistema SHALL entregar un nuevo par de tokens en `POST /api/auth/oauth/token`
 - **THEN** el sistema no emite tokens
 
 ### Requirement: Perfil del usuario autenticado
-El sistema SHALL devolver el perfil del dueño del token en `GET /api/auth/v1/me` (`id`, `uuid`, `id_persona`, `rut`, `name`, `email`, `email_verified_at`, `created_at`), sin exponer la contraseña. `id_persona` y `rut` son `null` si el usuario no tiene. El endpoint MUST exigir un access token de usuario con el scope `user:read`.
+El sistema SHALL devolver el perfil del dueño del token en `GET /api/auth/v1/me` (`id`, `uuid`, `id_persona`, `name`, `email`, `email_verified_at`, `created_at`), sin exponer la contraseña ni el RUT. `id_persona` es `null` si el usuario no tiene. El endpoint MUST exigir un access token de usuario con el scope `user:read`.
 
 #### Scenario: Consulta del perfil con token válido
 - **WHEN** se llama con un access token de usuario que incluye `user:read`
-- **THEN** el sistema responde 200 con el perfil del usuario, incluidos su `uuid`, su `id_persona` y su `rut`, y sin el campo `password`
+- **THEN** el sistema responde 200 con el perfil del usuario, incluidos su `uuid` y su `id_persona`, y sin los campos `password` ni `rut`
 
 #### Scenario: Consulta sin token
 - **WHEN** se llama sin token
@@ -80,7 +80,7 @@ Todo usuario SHALL tener un `uuid` único, asignado al crearse, que no cambia nu
 - **THEN** su `uuid` sigue siendo el mismo
 
 ### Requirement: RUT del usuario
-Un usuario SHALL poder tener un `rut`, opcional y único entre los usuarios que lo tienen. Se MUST guardar sin puntos, con guion y con el dígito verificador en mayúscula (`12345678-K`). El RUT MUST NOT incluirse en los access tokens.
+Un usuario SHALL poder tener un `rut`, opcional y único entre los usuarios que lo tienen. Se MUST guardar sin puntos, con guion y con el dígito verificador en mayúscula (`12345678-K`). El RUT MUST NOT incluirse en los access tokens ni en las respuestas de la API.
 
 #### Scenario: Usuario sin RUT
 - **WHEN** se crean dos usuarios sin `rut`
@@ -92,7 +92,7 @@ Un usuario SHALL poder tener un `rut`, opcional y único entre los usuarios que 
 
 #### Scenario: RUT en la introspección
 - **WHEN** un servicio introspecta el access token de un usuario con RUT
-- **THEN** la respuesta incluye `user.rut` con el RUT del usuario
+- **THEN** la respuesta no incluye `user.rut`
 
 ### Requirement: Persona del usuario
 Un usuario SHALL poder tener un `id_persona`: el identificador institucional de la persona en API-Personas, opcional y único entre los usuarios que lo tienen. Un usuario sin persona (por ejemplo, un proveedor externo) MUST quedar con `id_persona` en `null`. API-Auth MUST NOT ofrecer endpoints para escribirlo.

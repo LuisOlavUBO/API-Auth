@@ -64,8 +64,8 @@ class TokenIntrospectionTest extends TestCase
             ->assertJsonPath('user.email', 'ana@example.com')
             ->assertJsonPath('uuid', User::firstWhere('email', 'ana@example.com')->uuid)
             ->assertJsonPath('user.uuid', User::firstWhere('email', 'ana@example.com')->uuid)
-            ->assertJsonPath('user.rut', '12345678-5')
             ->assertJsonPath('user.id_persona', 1029)
+            ->assertJsonMissingPath('user.rut')
             ->assertJsonStructure(['client_id', 'sub', 'scope', 'exp']);
     }
 
