@@ -238,6 +238,23 @@ class OpenIdConnectTest extends TestCase
         $this->assertArrayHasKey('id_token', $this->exchangeWith(['scope' => 'openid']));
     }
 
+    public function test_the_client_can_authenticate_with_form_urlencoded_basic_credentials(): void
+    {
+        $response = $this->actingAs($this->ana)->get($this->authorizeUrl($this->client, ['scope' => 'openid']));
+
+        // As openid-client sends them (RFC 6749 §2.3.1): the hyphens of the id as %2D, and here every byte of the secret.
+        $clientId = str_replace('-', '%2D', $this->client->getKey());
+        $clientSecret = implode('', array_map(fn (string $byte): string => '%'.strtoupper(bin2hex($byte)), str_split($this->client->plainSecret)));
+
+        $this->withHeader('Authorization', 'Basic '.base64_encode($clientId.':'.$clientSecret))
+            ->postJson('/api/auth/oauth/token', [
+                'grant_type' => 'authorization_code',
+                'redirect_uri' => self::REDIRECT_URI,
+                'code_verifier' => self::VERIFIER,
+                'code' => $this->queryOf($response)['code'],
+            ])->assertOk()->assertJsonStructure(['access_token', 'id_token']);
+    }
+
     public function test_userinfo_returns_the_claims_of_the_scopes_of_the_token(): void
     {
         $tokens = $this->tokensFor($this->ana, $this->client, 'openid email');
